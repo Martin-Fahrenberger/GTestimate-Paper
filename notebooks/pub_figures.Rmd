@@ -1,0 +1,586 @@
+---
+title: "Publication Figures"
+author: "Martin Fahrenberger"
+output: html_document
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, warning = FALSE, message = FALSE, fig.width=10, fig.height=6)
+library(tidyverse)
+library(ggpubr)
+library(scales)
+
+folder <- 'pub_figures/'
+dir.create(folder)
+
+font_title <- 7
+font_axis <- 6
+font_tick <- 5
+
+legend_key_size <- unit(4,'mm')
+source('functions/gg_color_hue.R')
+
+```
+
+This script loads .Rds files produce during data-analysis and applys the final touches to produce all figures for the publication:
+
+```{r hist}
+read_count_hist <- readRDS('read_count_overview/read_count_plot.Rds')
+read_count_hist <- read_count_hist +
+  theme(axis.title = element_text(size = font_axis),
+        axis.text = element_text(size = font_tick),
+        title = element_text(size = font_title)) + 
+  ylab('Cells') +
+  xlab('UMIs/cell') +
+  ggtitle('UMI count per Cell, pbmc3k') +
+  scale_x_continuous(labels=trans_format(trans = 'identity', math_format(phantom()^phantom(8)*.x^phantom(8))), limits = c(0, 7000)) +
+  scale_y_continuous(breaks = c(0,100,200,300))
+
+read_count_hist
+ggsave(str_glue('{folder}read_count_hist.pdf'), read_count_hist, width = 60, height = 40, units = 'mm')
+```
+
+```{r toy}
+toy_example_plot <- readRDS('toy_example/example_plot.Rds')
+toy_example_plot <- toy_example_plot + 
+  theme_classic() +
+  theme(axis.title = element_text(size = font_axis),
+        axis.text = element_text(size = font_tick),
+        legend.position = 'bottom',
+        legend.text = element_text(size = font_axis),
+        legend.key.size = legend_key_size,
+        title = element_text(size = font_title)) +
+  xlab('Genes ranked by expression') + 
+  ylab('Relative expession') +
+  scale_fill_manual(values = c('black',gg_color_hue(2))) +
+  scale_x_discrete(labels = 1:30)
+
+toy_example_plot
+ggsave(str_glue('{folder}toy_example_plot.pdf'), toy_example_plot, width = 6.6, height = 2.6)
+```
+
+
+```{r raw_count}
+read_summary <- readRDS('cta_seq/summary/read_summary_plot.Rds')
+read_summary <- read_summary +
+  xlab('Cell') +
+  theme_classic() +
+  theme(axis.title = element_text(size = font_axis),
+        axis.text = element_text(size = font_tick),
+        legend.position = 'bottom',
+        legend.text = element_text(size = font_axis),
+        title = element_text(size = font_title),
+        legend.margin = margin(0,0,0,0),
+        legend.box.margin = margin(0,0,0,0),
+        legend.box.spacing = unit(0,'mm')) +
+  scale_y_continuous(limits = c(1, 85000000), trans = 'log10', labels=trans_format('log10',math_format(10^.x))) + 
+  ylab('Raw reads')
+
+read_summary
+
+ggsave(str_glue('{folder}read_summary.pdf'), read_summary, width = 3.24, height = 2)
+
+```
+
+
+```{r umis}
+
+read_counts_cta_seq <- readRDS('cta_seq/summary/count_plot.Rds')
+read_counts_cta_seq <- read_counts_cta_seq +
+  xlab('Cell') +
+  theme_classic() +
+  theme(axis.title = element_text(size = font_axis),
+        axis.text = element_text(size = font_tick),
+        legend.position = 'bottom',
+        legend.text = element_text(size = font_axis),
+        title = element_text(size = font_title),
+        legend.margin = margin(0,0,0,0),
+        legend.box.margin = margin(0,0,0,0),
+        legend.box.spacing = unit(0,'mm')) +
+  ylab('UMIs (thousands)') +
+  ggtitle('UMI counts, cta-seq') + 
+  scale_y_continuous(breaks = c(25000, 50000, 75000), labels = formatC(c(25,50,75), width = 4, format = "d")) +
+  scale_x_discrete(labels=trans_format(trans = 'identity', math_format(phantom()^phantom(8)*.x^phantom(8))))
+
+read_counts_cta_seq
+
+ggsave(str_glue('{folder}read_counts_cta_seq.pdf'), read_counts_cta_seq, width = 60, height = 40, units = 'mm')
+ggsave(str_glue('{folder}read_counts_cta_seq_no_legend.pdf'), read_counts_cta_seq + theme(legend.position = 'none'), width = 60, height = 40, units = 'mm')
+
+```
+
+```{r cta-seq_mm}
+mm_cta_seq <- readRDS('cta_seq/summary/mm_plot.Rds')
+mm_cta_seq <- mm_cta_seq +
+  xlab('Cell') +
+  ylab('Missing mass') +
+  theme_classic() +
+  theme(axis.title = element_text(size = font_axis),
+        axis.text = element_text(size = font_tick),
+        legend.position = 'bottom',
+        legend.text = element_text(size = font_axis),
+        title = element_text(size = font_title),
+        legend.margin = margin(0,0,0,0),
+        legend.box.margin = margin(0,0,0,0),
+        legend.box.spacing = unit(0,'mm'))
+
+mm_cta_seq
+ggsave(str_glue('{folder}mm_cta_seq.pdf'), mm_cta_seq, width = 3.24, height = 2)
+```
+
+```{r cta-seq_feature}
+feature_cta_seq <- readRDS('cta_seq/summary/feature_plot.Rds')
+feature_cta_seq <- feature_cta_seq +
+  xlab('Cell') +
+  ylab('Observed genes') +
+  theme_classic() +
+  theme(axis.title = element_text(size = font_axis),
+        axis.text = element_text(size = font_tick),
+        legend.position = 'bottom',
+        legend.text = element_text(size = font_axis),
+        title = element_text(size = font_title),
+        legend.margin = margin(0,0,0,0),
+        legend.box.margin = margin(0,0,0,0),
+        legend.box.spacing = unit(0,'mm'))
+
+feature_cta_seq
+ggsave(str_glue('{folder}feature_cta_seq.pdf'), feature_cta_seq, width = 3.24, height = 2)
+```
+
+```{r downsampling_errors}
+re_errors_absolute_down <- readRDS('downsampling_results/abs_error_plot.Rds')
+re_errors_absolute_down <- re_errors_absolute_down +
+  theme_classic() +
+  theme(legend.position = 'none',
+        title = element_text(size = font_title),
+        axis.title = element_text(size = font_axis),
+        axis.text = element_text(size = font_tick),
+        legend.text = element_text(size = font_axis),
+        legend.margin = margin(0,0,0,0),
+        legend.box.margin = margin(0,0,0,0),
+        legend.box.spacing = unit(0,'mm'),
+        legend.key.size = legend_key_size) +
+  scale_x_log10(labels=trans_format('log10',math_format(10^.x))) + 
+  xlab('UMIs/cell') + 
+  ylab('Absolute error') +
+  ggtitle('Estimation Errors') +
+  scale_y_continuous(labels = function(x) formatC(x, width = 7, format = "f", digits = 1), limits = c(0, 1.85))
+
+re_errors_absolute_down
+ggsave(str_glue('{folder}re_errors_absolute_down.pdf'), re_errors_absolute_down, width = 60, height = 40, units = 'mm')
+
+```
+```{r downsampling_dists}
+same_dist <- readRDS('downsampling_results/euclidean_same_dist_plot.Rds')
+same_dist <- same_dist +
+  ggtitle(element_blank()) +
+  theme_classic() +
+  theme(legend.position = 'none',
+        title = element_text(size = font_title),
+        axis.title = element_text(size = font_axis),
+        axis.text = element_text(size = font_tick),
+        legend.text = element_text(size = font_axis),
+        legend.margin = margin(0,0,0,0),
+        legend.box.margin = margin(0,0,0,0),
+        legend.box.spacing = unit(0,'mm'),
+        legend.key.size = legend_key_size) +
+  scale_x_log10(labels=trans_format('log10',math_format(10^.x))) +
+  xlab('UMIs/cell') + 
+  ylab('Euclidean distance') +
+  ggtitle('Distances, same Cells') +
+  scale_y_continuous(labels = function(x) formatC(x, width = 6, format = "f", digits = 2), limits = c(0, 0.155))
+
+ggsave(str_glue('{folder}same_dists.pdf'), same_dist, width = 60, height = 40, units = 'mm')
+
+different_dist <- readRDS('downsampling_results/euclidean_different_dist_plot.Rds')
+different_dist <- different_dist +
+  ggtitle(element_blank()) +
+  theme_classic() +
+  theme(legend.position = 'none',
+        title = element_text(size = font_title),
+        axis.title = element_text(size = font_axis),
+        axis.text = element_text(size = font_tick),
+        legend.text = element_text(size = font_axis),
+        legend.margin = margin(0,0,0,0),
+        legend.box.margin = margin(0,0,0,0),
+        legend.box.spacing = unit(0,'mm'),
+        legend.key.size = legend_key_size) +
+  scale_x_log10(labels=trans_format('log10',math_format(10^.x))) + 
+  xlab('UMIs/cell') + 
+  ylab('Euclidean distance') +
+  ggtitle('Distances, different Cells') +
+  scale_y_continuous(labels = function(x) formatC(x, width = 6, format = "f", digits = 2), limits = c(0, 0.155))
+
+ggsave(str_glue('{folder}different_dist.pdf'), different_dist, width = 60, height = 40, units = 'mm')
+```
+
+```{r downsampling_dists_with_legend}
+same_dist_legend <- readRDS('downsampling_results/euclidean_same_dist_plot.Rds')
+same_dist_legend <- same_dist +
+  ggtitle(element_blank()) +
+  theme_classic() +
+  theme(title = element_text(size = font_title),
+        axis.title = element_text(size = font_axis),
+        axis.text = element_text(size = font_tick),
+        legend.text = element_text(size = font_axis),
+        legend.margin = margin(0,0,0,0),
+        legend.box.margin = margin(0,0,0,0),
+        legend.box.spacing = unit(0,'mm'),
+        legend.key.size = legend_key_size) +
+  scale_x_log10(labels=trans_format('log10',math_format(10^.x))) +
+  xlab('UMIs/cell') + 
+  ylab('Euclidean distance') +
+  ggtitle('Distances, equal Cells') +
+  guides(linetype = guide_legend(override.aes = list(linetype = "33"))) +
+  scale_y_continuous(labels = function(x) formatC(x, width = 5, format = "f", digits = 2), limits = c(0, 0.155))
+
+different_dist_legend <- readRDS('downsampling_results/euclidean_different_dist_plot.Rds')
+different_dist_legend <- different_dist +
+  ggtitle(element_blank()) +
+  theme_classic() +
+  theme(title = element_text(size = font_title),
+        axis.title = element_text(size = font_axis),
+        axis.text = element_text(size = font_tick),
+        legend.text = element_text(size = font_axis),
+        legend.margin = margin(0,0,0,0),
+        legend.box.margin = margin(0,0,0,0),
+        legend.box.spacing = unit(0,'mm'),
+        legend.key.size = legend_key_size) +
+  scale_x_log10(labels=trans_format('log10',math_format(10^.x))) + 
+  xlab('UMIs/cell') + 
+  ylab('Euclidean distance') +
+  ggtitle('Distances, different Cells') +
+  guides(linetype = guide_legend(override.aes = list(linetype = "33"))) +
+  scale_y_continuous(labels = function(x) formatC(x, width = 5, format = "f", digits = 2), limits = c(0, 0.155))
+
+combined_dists_legend <- ggarrange(same_dist_legend, different_dist_legend, common.legend = T)
+
+combined_dists_legend
+ggsave(str_glue('{folder}combined_dists_legend.pdf'), combined_dists_legend, width = 120, height = 40, units = 'mm')
+```
+
+```{r dowsampling_dist_diffs}
+dist_diff <- readRDS('downsampling_results/euclidean_dist_diff_plot.Rds')
+dist_diff <- dist_diff +
+  ggtitle(element_blank()) +
+  theme_classic() +
+  theme(legend.position = 'none',
+        title = element_text(size = font_title),
+        axis.title = element_text(size = font_axis),
+        axis.text = element_text(size = font_tick),
+        legend.text = element_text(size = font_axis),
+        legend.margin = margin(0,0,0,0),
+        legend.box.margin = margin(0,0,0,0),
+        legend.box.spacing = unit(0,'mm'),
+        legend.key.size = legend_key_size) +
+  scale_x_log10(labels=trans_format('log10',math_format(10^.x))) + 
+  xlab('UMIs/cell') +
+  ylab('Distance difference') +
+  ggtitle(expression('Distance Differences\nsame vs. different Cells')) +
+  scale_y_continuous(labels = function(x) formatC(x, width = 5, format = "f", digits = 3), limits = c(0,0.012), breaks = c(0,0.003, 0.006, 0.009, 0.012))
+
+dist_diff
+ggsave(str_glue('{folder}dist_diff.pdf'), dist_diff, width = 60, height = 42, units = 'mm')
+```
+
+```{r cta_errors}
+re_errors_absolute <- readRDS('cta_seq/re_estimation/absolute_plot.Rds')
+re_errors_absolute <- re_errors_absolute +
+  ggtitle(element_blank()) +
+  xlab('Cell') +
+  theme_classic() +
+  theme(legend.position = 'none',
+        title = element_text(size = font_title),
+        axis.title = element_text(size = font_axis),
+        axis.text = element_text(size = font_tick),
+        legend.text = element_text(size = font_axis),
+        legend.margin = margin(0,0,0,0),
+        legend.box.margin = margin(0,0,0,0),
+        legend.box.spacing = unit(0,'mm'),
+        legend.key.size = legend_key_size) +
+  ylab('Absolute error') +
+  ggtitle('Estimation Errors, cta-seq') + 
+  scale_y_continuous(labels = function(x) formatC(x, width = 4, format = "f", digits = 1)) +
+  scale_x_discrete(labels=trans_format(trans = 'identity', math_format(phantom()^phantom(8)*.x^phantom(8))))
+
+re_errors_absolute
+ggsave(str_glue('{folder}re_errors_absolute.pdf'), re_errors_absolute, width = 60, height = 40, units = 'mm')
+```
+
+```{r cta_dists}
+cta_dist_scatter <- readRDS('cta_seq/scatter_plots/scatter_combined_pca.Rds')
+cta_dist_scatter <- cta_dist_scatter +
+  theme_classic() +
+  theme(legend.position = 'none',
+        title = element_text(size = font_title),
+        axis.title = element_text(size = font_axis),
+        axis.text = element_text(size = font_tick),
+        legend.text = element_text(size = font_axis),
+        legend.margin = margin(0,0,0,0),
+        legend.box.margin = margin(0,0,0,0),
+        legend.box.spacing = unit(0,'mm'),
+        legend.key.size = legend_key_size) +
+  guides(col = guide_legend(override.aes = list(size = 1.5))) +
+  xlab('Ground truth distance') +
+  ylab('Estimated distance') +
+  ggtitle('Estimated vs. True Distances, cta-seq') + 
+  scale_y_continuous(labels = function(x) formatC(x, width = 4, format = "d"), limits = c(0,42)) +
+  scale_x_continuous(labels=trans_format(trans = 'identity', math_format(phantom()^phantom(8)*.x^phantom(8))), limits = c(0,42))
+
+cta_dist_scatter
+ggsave(str_glue('{folder}cta_dist_scatter.pdf'), cta_dist_scatter, width = 60, height = 64, units = 'mm')
+```
+
+```{r pbmc_umap}
+pbmc_umap <- readRDS(file = 'downstream_analysis_results/pbmc_umap_clusters.Rds')
+pbmc_umap <- pbmc_umap +
+  theme_classic() +
+  theme(legend.position = 'bottom',
+        legend.box.spacing = unit(0, 'cm'),
+        title = element_text(size = font_title),
+        axis.title = element_text(size = font_axis),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        legend.text = element_text(size = font_axis),
+        strip.text = element_text(size = font_title),
+        legend.margin = margin(0,0,0,0),
+        legend.box.margin = margin(0,0,0,0),
+        legend.key.size = legend_key_size*0.75, legend.title = element_blank(),
+        legend.spacing = unit(0, 'mm'),
+        axis.line = element_line(arrow = grid::arrow(length = unit(0.2, 'cm'), type = 'closed'))) +
+  guides(col = guide_legend(ncol=3, override.aes = list(size = 1))) +
+  xlab('UMAP_1') +
+  ylab('UMAP_2')
+
+identity_umap <- readRDS(file = 'downstream_analysis_results/pbmc_umap_identity.Rds')
+identity_umap <- identity_umap +
+  theme_classic() +
+  facet_wrap(~'Differences') +
+  theme(legend.position = 'bottom',
+        axis.title.y = element_blank(),
+        legend.box.spacing = unit(0.3, 'cm'),
+        legend.box.margin = unit(c(0,0,0,0), 'cm'),
+        title = element_text(size = font_title),
+        axis.title.x = element_text(size = font_axis),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        legend.text = element_text(size = font_axis),
+        strip.text = element_text(size = font_title),
+        legend.margin = margin(0,0,0,0),
+        legend.key.size = legend_key_size*0.75,
+        axis.line = element_line(arrow = grid::arrow(length = unit(0.2, 'cm'), type = 'closed'))) +
+  guides(col = guide_legend(ncol=1, override.aes = list(size = 1), title = 'cluster assignment\nchanged?')) +
+   scale_color_manual(values = c('black', 'grey'), breaks = c('yes', 'no')) +
+  xlab('UMAP_1') +
+  ylab('UMAP_2')
+
+combined_pbmc <- ggarrange(pbmc_umap + ggtitle('UMAPs, pbmc3k'), identity_umap + ggtitle(' '), widths = c(2,1)) 
+
+combined_pbmc
+ggsave(str_glue('{folder}pbmc_umap.png'), combined_pbmc, width = 100, height = 55, units = 'mm', dpi = 600)
+```
+
+```{r pbmc_marker}
+nkg7_plot <- readRDS(file = 'downstream_analysis_results/nkg7_plot.Rds')
+nkg7_plot <- nkg7_plot +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+        legend.position = 'top',
+        title = element_text(size = font_title),
+        axis.title.x = element_text(size = font_axis),
+        axis.text = element_text(size = font_tick),
+        legend.text = element_text(size = font_axis),
+        legend.margin = margin(0,0,0,0),
+        legend.key.size = legend_key_size*0.7,
+        legend.title = element_blank(),
+        legend.box.spacing = unit(0, 'cm'),) +
+  ylab('Log-normalized expression') +
+  xlab(element_blank()) +
+  ggtitle('Expression of NKG7, pbmc3k')
+
+nkg7_plot
+ggsave(str_glue('{folder}nkg7_plot.pdf'), nkg7_plot, width = 50, height = 55.8, units = 'mm')
+```
+
+```{r pbmc_mm}
+mm_hist <- readRDS(file = 'downstream_analysis_results/mm_hist.Rds')
+mm_hist <- mm_hist +
+  theme_classic() +
+  theme(axis.title = element_text(size = font_axis),
+        axis.text = element_text(size = font_tick)) + 
+  ylab('Cells') + 
+  xlab('Missing mass')
+
+mm_hist
+ggsave(str_glue('{folder}mm_hist.pdf'), mm_hist, width = 3.24, height = 2)
+```
+
+
+```{r spatial_clustering}
+spatial_clustering <- readRDS(file = 'spatial_transcriptomics/st_clustering_plots.Rds')
+
+spatial_clustering
+ggsave(str_glue('{folder}spatial_clustering.png'), spatial_clustering, width = 6.6, height = 3.6, dpi = 600)
+```
+
+```{r spatial_umap}
+brain_umap <- readRDS(file = 'spatial_transcriptomics/brain_umap.Rds')
+
+brain_umap <- brain_umap + 
+  theme_classic() +
+  theme(legend.position = 'none',
+        title = element_text(size = font_title),
+        axis.title = element_text(size = font_axis),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        legend.text = element_text(size = font_axis),
+        strip.text = element_text(size = font_title),
+        axis.line = element_line(arrow = grid::arrow(length = unit(0.2, 'cm'), type = 'closed'))) +
+  xlab('UMAP_1') +
+  ylab('UMAP_2')
+
+brain_umap
+ggsave(str_glue('{folder}brain_umap.png'), brain_umap, width = 4.4, height = 2.2, dpi = 600)
+```
+
+```{r spatial_jaccard}
+brain_jaccard <- readRDS(file = 'spatial_transcriptomics/jaccard_plot.Rds')
+
+brain_jaccard <- brain_jaccard + 
+  theme_classic() +
+  theme(legend.position = 'bottom',
+        title = element_text(size = font_title),
+        axis.title = element_text(size = font_axis),
+        axis.text = element_text(size = font_axis),
+        legend.text = element_text(size = font_axis),
+        strip.text = element_text(size = font_title),
+        legend.key.size = legend_key_size,
+        legend.box.spacing = unit(0.1, 'cm'))+
+  scale_fill_viridis_c(breaks = c(0,0.3,0.6,0.9), labels = c(0,0.3,0.6,0.9))
+
+brain_jaccard
+ggsave(str_glue('{folder}brain_jaccard.pdf'), brain_jaccard,width = 2.5, height =2.9, dpi = 600)
+```
+
+
+```{r spatial_marker}
+spatial_marker <- readRDS(file = 'spatial_transcriptomics/TTr_combined.Rds')
+
+spatial_marker
+ggsave(str_glue('{folder}spatial_marker.png'), spatial_marker, width = 6.6, height = 3.3, dpi = 600)
+```
+
+
+```{r spatial_difference}
+spatial_diff <- readRDS(file = 'spatial_transcriptomics/TTr_ML_vs_GT.Rds') +
+  theme(legend.key.size = legend_key_size*0.75)
+
+spatial_diff <- spatial_diff +
+  theme(legend.margin = margin(0,0,0,0),
+        title = element_text(size = font_title),
+        legend.box.spacing = unit(0, 'cm')) +
+  ggtitle(expression('Relative Difference\nlog-norm. Expression Ttr'))
+
+spatial_diff
+ggsave(str_glue('{folder}spatial_diff.png'), spatial_diff, width = 40, height = 58, units = 'mm', dpi = 400)
+```
+
+
+```{r spatial_counts}
+spatial_counts <- readRDS(file = 'spatial_transcriptomics/nReads_plot.Rds') +
+  theme(legend.key.size = legend_key_size*0.75)
+
+spatial_counts <- spatial_counts +
+  theme(legend.margin = margin(0,0,0,0),
+        title = element_text(size = font_title),
+        legend.box.spacing = unit(0, 'cm')) +
+  ggtitle('UMIs per Spot')
+spatial_counts
+ggsave(str_glue('{folder}spatial_counts.png'), spatial_counts, width = 40, height = 55, units = 'mm', dpi = 400)
+```
+
+```{r pancreas_umap}
+pancreas_umap <- readRDS(file = 'downstream_analysis_results/pancreas_umap_same_clusters.Rds')
+pancreas_umap <- pancreas_umap + 
+  theme_classic() +
+  theme(legend.position = 'bottom',
+        legend.box.spacing = unit(0, 'cm'),
+        title = element_text(size = font_title),
+        axis.title.x = element_text(size = font_axis),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        legend.text = element_text(size = font_axis),
+        strip.text = element_text(size = font_title),
+        legend.margin = margin(0,0,0,0),
+        legend.box.margin = margin(0,0,0,0),
+        legend.key.size = legend_key_size*0.75,
+        legend.title = element_blank(),
+        legend.spacing = unit(0, 'mm'),
+        axis.line = element_line(arrow = grid::arrow(length = unit(0.2, 'cm'), type = 'closed'))) +
+  guides(col = guide_legend(ncol = 4, override.aes = list(size = 1.5))) + 
+  xlab('UMAP_1') + 
+  ylab('UMAP_2')
+
+pancreas_identity_umap <- readRDS(file = 'downstream_analysis_results/pancreas_umap_identity.Rds')
+pancreas_identity_umap <- pancreas_identity_umap +
+  theme_classic() +
+  facet_wrap(~'Differences') +
+  theme(legend.position = 'bottom',
+        axis.title.y = element_blank(),
+        legend.box.spacing = unit(0, 'cm'),
+        legend.box.margin = unit(c(0,0,0,0), 'cm'),
+        title = element_text(size = font_title),
+        axis.title.x = element_text(size = font_axis),
+        axis.text = element_blank(),
+        axis.ticks = element_blank(),
+        legend.text = element_text(size = font_axis),
+        strip.text = element_text(size = font_title),
+        legend.margin = margin(0,0,0,0),
+        legend.key.size = legend_key_size*0.75,
+        legend.spacing = unit(0, 'mm'),
+        axis.line = element_line(arrow = grid::arrow(length = unit(0.2, 'cm'), type = 'closed'))) +
+  guides(col = guide_legend(ncol=1, override.aes = list(size = 1.5), title = 'cluster assignment\nchanged?')) +
+  scale_color_manual(values = c('black', 'grey'), breaks = c('yes', 'no')) + 
+  xlab('UMAP_1') + 
+  ylab('UMAP_2')
+
+pancreas_combined <- ggarrange(pancreas_umap + ggtitle('UMAPs, Developing Pancreas'), pancreas_identity_umap  + ggtitle(' '), widths = c(2,1) )
+pancreas_combined
+ggsave(str_glue('{folder}pancreas_umap.png'), pancreas_combined, width = 100, height = 52, units = 'mm', dpi = 600)
+```
+
+```{r pancreas_umaps_split}
+pancreas_umap_ML <- readRDS(file = 'downstream_analysis_results/pancreas_umap_ML_same_clusters.Rds')
+pancreas_umap_ML <- pancreas_umap_ML +
+  theme_void() + 
+  theme(legend.position = 'none')
+
+ggsave(str_glue('{folder}pancreas_umap_ML.png'), pancreas_umap_ML, width = 32, height = 36, units = 'mm', dpi = 600)
+
+pancreas_umap_GT <- readRDS(file = 'downstream_analysis_results/pancreas_umap_GT_same_clusters.Rds')
+pancreas_umap_GT <- pancreas_umap_GT +
+  theme_void() + 
+  theme(legend.position = 'none')
+
+ggsave(str_glue('{folder}pancreas_umap_GT.png'), pancreas_umap_GT, width = 32, height = 36, units = 'mm', dpi = 600)
+```
+
+
+```{r pancreas_flow}
+pancreas_flow <- readRDS(file = 'downstream_analysis_results/cluster_flow_plot.Rds')
+pancreas_flow <- pancreas_flow +
+  theme_classic() +
+  theme(legend.position = 'none',
+        title = element_text(size = font_title),
+        axis.title.x = element_text(size = font_axis),
+        axis.text = element_text(size = font_tick),
+        axis.text.y = element_text(angle = 90, hjust = 0.5)) +
+  xlab(element_blank()) + 
+  ggtitle(element_blank()) +
+  scale_x_discrete(expand = c(0.15, 0.15)) +
+  ylab('Cells') +
+  ggtitle(expression('Differences Clustering\nDeveloping Pancreas'))
+
+pancreas_flow
+ggsave(str_glue('{folder}pancreas_flow.pdf'), pancreas_flow, width = 30, height = 60, units = 'mm')
+```

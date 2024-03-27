@@ -1,0 +1,444 @@
+---
+title: "Using cta-seq to validate the Good-Turing estimator"
+output: 
+  html_document:
+    css: style.css
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width=10, fig.height=6)
+library(Seurat)
+library(tidyverse)
+library(GTestimate)
+library(fs)
+library(knitr)
+
+source('functions/calc_errors.R')
+source('functions/save_plots.R')
+source('functions/manual_ScaleData.R')
+source('functions/project_pca.R')
+
+folder <- 'cta_seq/'
+dir.create(folder)
+```
+
+# Introduction
+In this script we will use the UMI-Tools corrected UMI counts of our cta-seq data to validate the Good-Turing estimator on scRNA-seq data.
+
+We load the typical data from cta-seq run 1 and the data after amplification from cta-seq run 2 and construct a large tibble containing all data for analysis.
+
+```{r load_data}
+umi_tools_cm <- readRDS('umi_tools_corrected_deep_counts.RDS')
+
+umi_tools_dgC <- umi_tools_cm %>% select(-gene) %>% as.matrix() %>% as('dgCMatrix')
+rownames(umi_tools_dgC) <- umi_tools_cm$gene
+
+my_cells <- as.character(str_glue('{read_csv("select_cells/barcodes.csv")$barcodes}-1'))
+
+data_tbl <- tibble(data_folders = c('../cta_seq/outs/filtered_feature_bc_matrix/',
+                                    '../cta_seq_run2/outs/filtered_feature_bc_matrix/'),
+                   Dataset = c('typical', 'ultra-deep'),
+                   cells = list(my_cells)) %>%
+  mutate(raw_counts = map(data_folders, Read10X))
+
+umi_tools_dgC_large <- matrix(0, ncol = 18, nrow = nrow(data_tbl$raw_counts[[1]])) %>% as('dgCMatrix')
+rownames(umi_tools_dgC_large) <- rownames(data_tbl$raw_counts[[1]])
+colnames(umi_tools_dgC_large) <- colnames(umi_tools_dgC)
+
+for(i in rownames(umi_tools_dgC)){
+  umi_tools_dgC_large[i,] <- umi_tools_dgC[i,]
+}
+
+data_tbl$raw_counts[[2]] <- umi_tools_dgC_large
+
+```
+
+Next we calculate the relative expression for both the typical and the ultra-deep data-set. Using both the GT and ML estimator.
+
+```{r calc_relative_expression}
+data_tbl <- data_tbl %>%
+  mutate(seurat_objects = map(raw_counts, CreateSeuratObject)) %>%
+  mutate(seurat_objects = map(seurat_objects, partial(NormalizeData, normalization.method = 'RC', scale.factor = 1))) %>%
+  mutate(seurat_objects = map(seurat_objects, partial(GTestimate, log1p.transform = F, size.factor = 1)))
+```
+# Summary 
+We can quickly summarize the data here:
+
+```{r simple_summary}
+
+dir.create(str_glue('{folder}summary/'))
+count_summary_tbl <- data_tbl %>%
+  mutate(`#reads` = map2(raw_counts, cells, function(x, y) tibble(`#reads` = colSums(x)[y])),
+         Feature_count = map2(raw_counts, cells, function(x, y) tibble(Feature_count = colSums(x != 0)[y])),
+         missing_mass = map2(seurat_objects, cells, function(x, y) tibble(missing_mass = x$missing_mass[y]))) %>%
+  select(Dataset, cells, `#reads`, Feature_count, missing_mass)
+
+count_summary_tbl <- count_summary_tbl %>%
+  unnest(c(cells, `#reads`, Feature_count, missing_mass))
+
+count_summary_tbl <- count_summary_tbl %>%
+  mutate(cells = factor(cells, levels = my_cells), Dataset = factor(Dataset, levels = c('ultra-deep', 'typical'))) %>%
+  mutate(cell_barcodes = cells, cells = factor(as.numeric(cells), levels = 1:18))
+
+count_plot <- ggplot(count_summary_tbl) +
+  geom_line(aes(x = cells, y = `#reads`, linetype = Dataset, group = Dataset)) +
+  geom_point(aes(x = cells, y = `#reads`), size = .7) +
+  scale_linetype(breaks = c('typical', 'ultra-deep')) +
+  scale_x_discrete(labels = 1:18)
+ggsave(str_glue('{folder}summary/count_plot.pdf'), count_plot, width = 6.6, height = 4)
+saveRDS(file = str_glue('{folder}summary/count_plot.Rds'), count_plot)
+count_plot
+
+feature_plot <- ggplot(count_summary_tbl) +
+  geom_line(aes(x = cells, y = Feature_count, linetype = Dataset, group = Dataset)) +
+  geom_point(aes(x = cells, y = Feature_count), size = .7) +
+  scale_linetype(breaks = c('typical', 'ultra-deep')) +
+  scale_x_discrete(labels = 1:18)
+ggsave(str_glue('{folder}summary/feature_plot.pdf'), feature_plot, width = 6.6, height = 4)
+saveRDS(file = str_glue('{folder}summary/feature_plot.Rds'), feature_plot)
+feature_plot
+
+mm_plot <- ggplot(count_summary_tbl) +
+  geom_line(aes(x = cells, y = missing_mass, linetype = Dataset, group = Dataset)) +
+  geom_point(aes(x = cells, y = missing_mass), size = .7) +
+  scale_linetype(breaks = c('typical', 'ultra-deep')) +
+  scale_x_discrete(labels = 1:18)
+ggsave(str_glue('{folder}summary/mm_plot.pdf'), mm_plot, width = 6.6, height = 4)
+saveRDS(file = str_glue('{folder}summary/mm_plot.Rds'), mm_plot)
+mm_plot
+```
+
+# Raw reads
+We can also look at the raw reads for our 18 cells, read_processing.sh has already counted these and saved them in ../data/deep_cbz_sorted.txt
+
+```{r}
+cb_counts_deep <- read_delim('../data/deep_cbz_sorted.txt',  delim = ' CB:Z:', col_names = c('raw_counts_deep', 'cell_barcodes'), col_types = 'nc')
+cb_counts_deep <- cb_counts_deep %>%
+  filter(cell_barcodes %in% my_cells)
+
+cb_counts_deep
+cb_counts_deep$raw_counts_deep %>% sum
+
+cb_counts_normal <- read_delim('../data/normal_cbz_sorted.txt',  delim = ' CB:Z:', col_names = c('raw_count_normal', 'cell_barcodes'), col_types = 'nc')
+cb_counts_normal <- cb_counts_normal %>%
+  filter(cell_barcodes %in% my_cells)
+
+cb_counts_normal
+cb_counts_normal$raw_count_normal %>% sum
+
+read_summary_tbl <- count_summary_tbl %>%
+  select(cells, cell_barcodes, `#reads`, Dataset) %>%
+  pivot_wider(names_from = Dataset, values_from = `#reads`) %>%
+  left_join(cb_counts_deep) %>%
+  left_join(cb_counts_normal)
+
+read_summary_tbl <- read_summary_tbl %>% 
+  pivot_longer(c(raw_counts_deep, raw_count_normal), names_to = 'Dataset', values_to = 'raw read count') %>%
+  mutate(Dataset = fct_recode(Dataset,  `ultra-deep` = 'raw_counts_deep', typical = 'raw_count_normal')) %>%
+  mutate(Dataset = fct_relevel(Dataset, c('ultra-deep', 'typical')))
+
+read_summary_plot <- ggplot(read_summary_tbl) + 
+  geom_line(aes(x = cells, y = `raw read count`, linetype = Dataset, group = Dataset)) +
+  geom_point(aes(x = cells, y = `raw read count`), size = .7) +
+  scale_linetype(breaks = c('typical', 'ultra-deep')) +
+  scale_y_continuous(limits = c(1, 85000000), trans = 'log10')
+
+ggsave(str_glue('{folder}summary/read_summary_plot.pdf'), read_summary_plot, width = 6.6, height = 4)
+saveRDS(file = str_glue('{folder}summary/read_summary_plot.Rds'), read_summary_plot)
+read_summary_plot
+
+```
+
+# Relative expression estimation error
+Next we will take a look at the errors made during relative expression estimation for both the GT and ML estimators:
+
+```{r estimation_errors}
+dir.create(str_glue('{folder}re_estimation/'))
+
+estimation_error_tbl <- bind_rows(map(my_cells, partial(calc_errors,
+                                             typical_seurat = data_tbl$seurat_objects[[1]],
+                                             deep_seurat = data_tbl$seurat_objects[[2]],
+                                             metric = 'absolute'))) %>%
+  rbind(bind_rows(map(my_cells, partial(calc_errors,
+                                        typical_seurat = data_tbl$seurat_objects[[1]],
+                                        deep_seurat = data_tbl$seurat_objects[[2]],
+                                        metric = 'squared'))))
+
+estimation_error_tbl <- estimation_error_tbl %>%
+  mutate(cell = factor(cell, levels = my_cells))  %>%
+  pivot_longer(!c(metric, cell), names_to = 'Method', values_to = 'Error') %>%
+  mutate(Method = factor(Method, levels = c('ML', 'GT'))) %>%
+  mutate(cell_barcodes = str_remove(cell, '-1'), cell = factor(as.numeric(cell), levels = 1:18))
+
+squared_plot <- ggplot(estimation_error_tbl %>% filter(metric == 'squared')) +
+  geom_line(aes(x = cell, y = Error, col = Method, group = Method)) +
+  geom_point(aes(x = cell, y = Error, col = Method), size = .7) +
+  ggtitle('Squared Error')
+
+ggsave(str_glue('{folder}re_estimation/squared_plot.pdf'), squared_plot, width = 6.6, height = 4)
+saveRDS(file = str_glue('{folder}re_estimation/squared_plot.Rds'), squared_plot)
+squared_plot
+
+absolute_plot <- ggplot(estimation_error_tbl %>% filter(metric == 'absolute')) +
+  geom_line(aes(x = cell, y = Error, col = Method, group = Method)) +
+  geom_point(aes(x = cell, y = Error, col = Method), size = .7) +
+  ggtitle('Absolute Error') 
+
+ggsave(str_glue('{folder}re_estimation/absolute_plot.pdf'), absolute_plot, width = 6.6, height = 4)
+saveRDS(file = str_glue('{folder}re_estimation/absolute_plot.Rds'), absolute_plot)
+absolute_plot
+```
+
+we can also visualize for which genes we make the highest errors:
+
+```{r error_where}
+ML_data <- GetAssayData(data_tbl$seurat_objects[[1]], assay = 'RNA', slot = 'data')[,my_cells]
+ML_means <- rowMeans(ML_data)
+
+GT_data <- GetAssayData(data_tbl$seurat_objects[[1]], assay = 'GTestimate', slot = 'data')[,my_cells]
+GT_means <- rowMeans(GT_data)
+
+deep_data <- GetAssayData(data_tbl$seurat_objects[[2]], assay = 'RNA', slot = 'data')[,my_cells]
+deep_means <- rowMeans(deep_data)
+
+deep_raw_means <- rowMeans(GetAssayData(data_tbl$seurat_objects[[2]], assay = 'RNA', slot = 'counts')[,my_cells])
+ML_raw_means <- rowMeans(GetAssayData(data_tbl$seurat_objects[[1]], assay = 'RNA', slot = 'counts')[,my_cells])
+
+something_expressed <- (ML_means + GT_means + deep_means) != 0
+
+ML_data <- ML_data[something_expressed,]
+GT_data <- GT_data[something_expressed,]
+deep_data <- deep_data[something_expressed,]
+
+ML_means <- data.frame(gene_mean = ML_means[something_expressed]) %>%
+  rownames_to_column(var = 'gene') %>%
+  as_tibble
+GT_means <-  data.frame(gene_mean = GT_means[something_expressed]) %>%
+  as.data.frame %>%
+  rownames_to_column(var = 'gene') %>%
+  as_tibble
+deep_means <-  data.frame(gene_mean = deep_means[something_expressed]) %>%
+  as.data.frame %>%
+  rownames_to_column(var = 'gene') %>%
+  as_tibble
+
+deep_raw_means <-  data.frame(gene_mean = deep_raw_means[something_expressed]) %>%
+  as.data.frame %>%
+  rownames_to_column(var = 'gene') %>%
+  as_tibble
+
+ML_raw_means <-  data.frame(gene_mean = ML_raw_means[something_expressed]) %>%
+  as.data.frame %>%
+  rownames_to_column(var = 'gene') %>%
+  as_tibble
+
+individual_error_tbl_ML <- (abs(ML_data - deep_data)) %>%
+  as.data.frame %>%
+  rownames_to_column(var = 'gene') %>%
+  as_tibble %>%
+  pivot_longer(cols = !gene, values_to = 'Error', names_to = 'Cell') %>%
+  left_join(deep_means) %>%
+  arrange(gene_mean) %>% 
+  mutate(cummulative_error = cumsum(Error)) %>%
+  mutate(Method = 'ML', expr_rank = row_number())
+
+individual_error_tbl_GT <- (abs(GT_data - deep_data)) %>%
+  as.data.frame %>%
+  rownames_to_column(var = 'gene') %>%
+  as_tibble %>%
+  pivot_longer(cols = !gene, values_to = 'Error', names_to = 'Cell') %>%
+  left_join(deep_means) %>%
+  arrange(gene_mean) %>% 
+  mutate(cummulative_error = cumsum(Error)) %>%
+  mutate(Method = 'GT', expr_rank = row_number())
+
+individual_error_tbl <- rbind(individual_error_tbl_ML, individual_error_tbl_GT) %>%
+  mutate(Method = factor(Method, levels = c('ML', 'GT')))
+
+cummulative_expr_error <- ggplot(individual_error_tbl) + geom_line(aes(x=gene_mean*5000 , y= cummulative_error, col = Method))
+ggsave(str_glue('{folder}re_estimation/cummulative_expr_error.pdf'), cummulative_expr_error, width = 6.6, height = 4)
+saveRDS(file = str_glue('{folder}re_estimation/cummulative_expr_error.Rds'), cummulative_expr_error)
+cummulative_expr_error
+
+cummulative_expr_error_ranked <- ggplot(individual_error_tbl) + geom_line(aes(x=expr_rank , y= cummulative_error, col = Method))
+ggsave(str_glue('{folder}re_estimation/cummulative_expr_error_ranked.pdf'), cummulative_expr_error_ranked, width = 6.6, height = 4)
+saveRDS(file = str_glue('{folder}re_estimation/cummulative_expr_error_ranked.Rds'), cummulative_expr_error_ranked)
+cummulative_expr_error_ranked
+
+```
+
+# Pairwise Distance
+
+Next we want to estimate the relative distances between cells and compare these distances to the ground-truth distances. This is usually done in PCA space after some additional pre-processing.
+
+In order to keep these transformations consistent we will calculate them once for the full typical data-set and then apply the same transformations to the ultra-deep data-set.
+
+
+```{r build_normal}
+normal_data <- Read10X('../cta_seq/outs/filtered_feature_bc_matrix/') %>% 
+  CreateSeuratObject(min.cells = 100, min.features = 0) %>%
+  AddMetaData(col.name = 'percent.mt', metadata = PercentageFeatureSet(., pattern = "^MT-")) %>%
+  subset(subset = nFeature_RNA > 1000 & nFeature_RNA < 5000 & percent.mt < 8) %>%
+  NormalizeData %>%
+  FindVariableFeatures %>%
+  ScaleData %>%
+  RunPCA()
+```
+
+OK, now we ll apply the transformations:
+
+```{r build_tbl_pca}
+data_tbl_pca <- data_tbl %>%
+  mutate(seurat_objects = map(raw_counts, function(x) CreateSeuratObject(x[rownames(normal_data), my_cells]))) %>%
+  merge(tibble(Method = c('GT', 'ML'))) %>%
+  as_tibble() %>%
+  mutate(Method = factor(Method, levels = c('ML', 'GT')))
+
+data_tbl_pca$seurat_objects[[1]] <- GTestimate(data_tbl_pca$seurat_objects[[1]], log1p.transform = T)
+data_tbl_pca$seurat_objects[[2]] <- GTestimate(data_tbl_pca$seurat_objects[[2]], log1p.transform = T)
+data_tbl_pca$seurat_objects[[3]] <- NormalizeData(data_tbl_pca$seurat_objects[[3]])
+data_tbl_pca$seurat_objects[[4]] <- NormalizeData(data_tbl_pca$seurat_objects[[4]])
+
+var_feats <- VariableFeatures(normal_data)
+
+VariableFeatures(data_tbl_pca$seurat_objects[[1]]) <- var_feats
+VariableFeatures(data_tbl_pca$seurat_objects[[2]]) <- var_feats
+VariableFeatures(data_tbl_pca$seurat_objects[[3]]) <- var_feats
+VariableFeatures(data_tbl_pca$seurat_objects[[4]]) <- var_feats
+
+gene_means <- rowMeans(GetAssayData(normal_data, slot = 'data'))
+gene_sds <- apply(GetAssayData(normal_data, slot = 'data'), 1, sd)
+
+data_tbl_pca <- data_tbl_pca %>%
+  mutate(seurat_objects = map(seurat_objects, function(x) manual_ScaleData(x, gene_means, gene_sds)))
+
+data_tbl_pca <- data_tbl_pca %>%
+  mutate(seurat_objects = map(seurat_objects, function(x) RunPCA(x, npcs = 5, verbose = F))) %>%
+  mutate(seurat_objects = map(seurat_objects, function(x) project_pca(normal_data@reductions$pca, x)))
+
+select_cell_tbl_pca <- data_tbl_pca %>%
+  select(Dataset, Method, seurat_objects) %>%
+  mutate(pca_embedding = map(seurat_objects, function(x) t(Embeddings(x, reduction = "pca")))) %>%
+  select(!seurat_objects)
+
+select_cell_tbl_pca <- as_tibble(merge(select_cell_tbl_pca, tibble(metric = c('euclidean', 'manhattan'))))
+
+select_cell_tbl_pca <- select_cell_tbl_pca %>% 
+  mutate(dists = map2(pca_embedding, metric, function(x,y) as.data.frame(as.matrix(dist(t(x), method = y))))) %>%
+  mutate(dists = map(dists, partial(rownames_to_column, var = 'Cell_A'))) %>%
+  mutate(dists = map(dists, as_tibble)) %>%
+  mutate(dists = map(dists, partial(pivot_longer, cols = !Cell_A, names_to = 'Cell_B', values_to = 'distance'))) %>%
+  mutate(dists = map(dists, function(x) x %>% filter(Cell_A != Cell_B)))
+
+select_cell_tbl_pca <- select_cell_tbl_pca %>%
+mutate(dists = map(dists, function(x) x %>% mutate(Cell_A = fct_relevel(Cell_A, my_cells), Cell_B = fct_relevel(Cell_B, my_cells))))
+```
+
+We have calculated these transformations for the normal data-set and transferred them onto the ultra-deep and GT data-sets. Now we can calculate pairwise distances in PCA space and make the same plots. 
+
+First we can look at some heatmaps of thge distances, although they are hard to read:
+
+```{r dist_plot_pca}
+dist_tbl_pca <- select_cell_tbl_pca %>%
+  select(-pca_embedding) %>%
+  unnest(dists)
+
+dist_plots_pca <- dist_tbl_pca %>%
+  group_by(metric) %>%
+  summarise(heatmaps = list(ggplot(tibble(Cell_A, Cell_B, distance, Dataset, Method)) +
+            geom_tile(aes(x = Cell_A, y = Cell_B, fill = distance)) +
+            scale_fill_viridis_c() +
+            theme(axis.text.x = element_text(angle = 90, vjust = 0.5, size = 6), axis.text.y = element_text(size = 6)) +
+            facet_grid(vars(Dataset), vars(Method)))) %>%
+  mutate(heatmap_files = pmap_chr(list(heatmaps, metric), function(x, y) save_plots(plot = x,
+                                                                                             file_name = str_glue('combined_heatmap_{y}'),
+                                                                                             folder_name = str_glue('{folder}cell_dists_pca/'),
+                                                                                             width = 6.6,
+                                                                                            height = 6.6)))
+walk(dist_plots_pca$heatmaps, print)
+```
+
+Next a bit easier to read scatter plots:
+
+```{r scatter_dist_pca}
+dir_create(str_glue('{folder}scatter_plots'))
+scatter_dist_tbl_pca <- dist_tbl_pca %>%
+  filter(metric == 'euclidean') %>%
+  mutate(Dataset_method = str_glue('{Dataset}_{Method}')) %>%
+  select(-c(Dataset, Method)) %>%
+  pivot_wider(names_from = Dataset_method, values_from = distance)
+
+scatter_dist_tbl_pca_2 <- scatter_dist_tbl_pca %>%
+  pivot_longer(cols = c(typical_ML, typical_GT), names_to = 'Method', values_to = 'distance_estimated') %>%
+  rename(ground_truth_distance = `ultra-deep_ML`) %>%
+  mutate(Method = str_replace(Method, 'typical_',''))
+
+model_ML_pca <- lm(typical_ML ~ `ultra-deep_ML`, data = scatter_dist_tbl_pca)
+scatter_ML_plot_pca <- ggplot(scatter_dist_tbl_pca) +
+  geom_point(aes(x = `ultra-deep_ML` , y = typical_ML)) +
+  geom_smooth(aes(x = `ultra-deep_ML`, y = typical_ML), method = 'lm') +
+  ggtitle(str_glue('Slope = {model_ML_pca$coefficients[2] %>% round(digits = 3)}, Sum of abs(residuals) = {model_ML_pca$residuals %>% abs %>% sum %>% round(digits = 3)}, \n Correlation = {cor(scatter_dist_tbl_pca$typical_ML, scatter_dist_tbl_pca$`ultra-deep_ML`) %>% round(digits = 3)}, Sum of abs(Errors) = {sum(abs(scatter_dist_tbl_pca$typical_ML - scatter_dist_tbl_pca$`ultra-deep_ML`)) %>% round(digits = 3)}')) +
+  coord_fixed()
+scatter_ML_plot_pca
+ggsave(str_glue('{folder}scatter_plots/scatter_deep_ML_vs_typical_ML_pca.pdf'), scatter_ML_plot_pca, width = 6.6, height = 4)
+saveRDS(file = str_glue('{folder}scatter_plots/scatter_deep_ML_vs_typical_ML_pca.Rds'), scatter_ML_plot_pca)
+
+model_GT_pca <- lm(typical_GT ~ `ultra-deep_ML`, data = scatter_dist_tbl_pca)
+scatter_GT_plot_pca <- ggplot(scatter_dist_tbl_pca) +
+  geom_point(aes(x = `ultra-deep_ML` , y = typical_GT)) +
+  geom_smooth(aes(x = `ultra-deep_ML`, y = typical_GT), method = 'lm') +
+  ggtitle(str_glue('Slope = {model_GT_pca$coefficients[2] %>% round(digits = 3)}, Sum of abs(residuals) = {model_GT_pca$residuals %>% abs %>% sum %>% round(digits = 3)}, \n Correlation = {cor(scatter_dist_tbl_pca$typical_GT, scatter_dist_tbl_pca$`ultra-deep_ML`) %>% round(digits = 3)}, Sum of abs(Errors) = {sum(abs(scatter_dist_tbl_pca$typical_GT - scatter_dist_tbl_pca$`ultra-deep_ML`)) %>% round(digits = 3)}')) +
+  coord_fixed()
+scatter_GT_plot_pca
+ggsave(str_glue('{folder}scatter_plots/scatter_deep_ML_vs_typical_GT_pca.pdf'), scatter_GT_plot_pca, width = 6.6, height = 4)
+saveRDS(file = str_glue('{folder}scatter_plots/scatter_deep_ML_vs_typical_GT_pca.Rds'), scatter_GT_plot_pca)
+
+coord_limits_pca <- c(-1, max(c(scatter_dist_tbl_pca_2$ground_truth_distance, scatter_dist_tbl_pca_2$distance_estimated)))
+
+model_ML_pca <- lm(typical_ML ~ `ultra-deep_ML`, data = scatter_dist_tbl_pca)
+model_GT_pca <- lm(typical_GT ~ `ultra-deep_ML`, data = scatter_dist_tbl_pca)
+
+scatter_plot_combined_pca <- ggplot(scatter_dist_tbl_pca_2 %>% mutate(Method = factor(Method, levels = c('ML','GT')))) +
+  geom_abline(slope = 1, linetype = 2, linewidth = .75) +
+  geom_line(aes(y = distance_estimated , x = ground_truth_distance, group = str_glue('{Cell_A}{Cell_B}')), alpha = 0.1, linewidth = .75) +
+  geom_point(aes(y = distance_estimated , x = ground_truth_distance, col = Method), size = .7) +
+  geom_smooth(aes(y = distance_estimated, x = ground_truth_distance, group = Method), col = 'black',method = 'lm', linewidth = .9, se = F, fullrange = T) +
+  geom_smooth(aes(y = distance_estimated, x = ground_truth_distance, col = Method), method = 'lm', linewidth = .75, se = F, fullrange = T) +
+  scale_x_continuous(limits = coord_limits_pca) +
+  scale_y_continuous(limits = coord_limits_pca) +
+  coord_fixed()
+scatter_plot_combined_pca
+ggsave(str_glue('{folder}scatter_plots/scatter_combined_pca.pdf'), scatter_plot_combined_pca, width = 6.6, height = 4)
+saveRDS(file = str_glue('{folder}scatter_plots/scatter_combined_pca.Rds'), scatter_plot_combined_pca)
+
+
+ML_model_tbl <- tibble(Method = 'ML', Slope = model_ML_pca$coefficients[2] %>%
+                         round(digits = 3),
+                       `Sum of abs(residuals)` = model_ML_pca$residuals %>%
+                         abs %>%
+                         sum %>%
+                         round(digits = 3),
+                       Intercept = model_ML_pca$coefficients[1] %>%
+                         round(digits = 3),
+                       `Sum of abs(Errors)` = sum(abs(scatter_dist_tbl_pca$typical_ML - scatter_dist_tbl_pca$`ultra-deep_ML`)) %>%
+                         round(digits = 3))
+
+GT_model_tbl <- tibble(Method = 'GT', Slope = model_GT_pca$coefficients[2] %>%
+                         round(digits = 3),
+                       `Sum of abs(residuals)` = model_GT_pca$residuals %>%
+                         abs %>%
+                         sum %>%
+                         round(digits = 3),
+                       Intercept = model_GT_pca$coefficients[1] %>%
+                         round(digits = 3),
+                       `Sum of abs(Errors)` = sum(abs(scatter_dist_tbl_pca$typical_GT - scatter_dist_tbl_pca$deep_GT)) %>%
+                         round(digits = 3))
+
+
+model_tbl <- rbind(ML_model_tbl, GT_model_tbl)
+
+write_lines(kable(model_tbl, format = 'latex'),file = str_glue('{folder}scatter_plots/pca_dists.tex'))
+
+```
+

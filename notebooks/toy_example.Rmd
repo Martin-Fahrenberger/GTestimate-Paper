@@ -1,0 +1,55 @@
+---
+title: "Toy Example"
+output: 
+  html_document:
+    css: style.css
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width=10, fig.height=6)
+library(tidyverse)
+library(GTestimate)
+folder <- 'toy_example/'
+dir.create(folder)
+
+```
+
+# Introduction
+Here we construct a small toy example to illustrate the overestimation issue with ML.
+First we construct a simple ground-truth
+
+```{r full}
+
+set.seed(42)
+exp_table_full <- table(tibble(Gene = sample(1:30, prob = exp(-0.5*1:30) + 0.2 * exp(-0.1*1:30), 200000, replace = TRUE)))
+
+exp_table_list_full <- rep(0,30)
+for (i in names(exp_table_full)){
+  exp_table_list_full[as.numeric(i)] <- exp_table_full[i]
+}
+exp_table_list_full <- exp_table_list_full/sum(exp_table_list_full)
+
+exp_full <- tibble(`ground-truth` = exp_table_list_full, Gene = 1:30)
+```
+Then we sample from this ground-truth and estimate the relative expression using ML and GT:
+
+```{r sample}
+exp_table_sample <- table(sample(exp_full$Gene, prob = exp_full$`ground-truth`, size = 25, replace = T))
+sample_tbl <- tibble(Gene = as.numeric(names(exp_table_sample)), sample_count = as.numeric(exp_table_sample))
+
+exp_full <- exp_full %>%
+  left_join(sample_tbl) %>%
+  mutate(sample_count = replace(sample_count, is.na(sample_count), 0)) %>%
+  mutate(ML = sample_count/sum(sample_count),
+         GT = as.numeric(GTestimate(as.matrix(sample_count), log1p.transform = F, size.factor = 1))) %>%
+  pivot_longer(cols = c(`ground-truth`, ML, GT), names_to = 'Method', values_to = 'relative expression') %>%
+  mutate(Method = factor(Method, levels = c('ground-truth', 'ML', 'GT')))
+
+example_plot <- ggplot(exp_full) + geom_bar(aes(x = factor(Gene), y = `relative expression`, fill = Method), stat = 'identity', position = "dodge2", width = 0.8) + theme(legend.position = 'bottom')
+
+example_plot
+ggsave(str_glue('{folder}example_plot.png'), example_plot, width = 6.6, height = 2.8)
+saveRDS(file = str_glue('{folder}example_plot.Rds'), example_plot)
+
+```
+

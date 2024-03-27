@@ -1,0 +1,367 @@
+---
+title: "Analysis of GTestimate's impact on downstream results"
+output: 
+  html_document:
+    css: style.css
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width=10, fig.height=6)
+library(Seurat)
+library(tidyverse)
+library(GTestimate)
+library(anndata)
+library(ggpubr)
+library(fs)
+library(ggalluvial)
+source('functions/gg_color_hue.R')
+
+folder <- 'downstream_analysis_results/'
+dir_create(folder)
+
+umap_dot_size <- 0.15
+
+set.seed(1)
+```
+
+# Introduction
+In this report we want to highlight the impact of GTestimate on various downstream analysis tasks. Namely we ll look into UMAP, clustering and the expression of marker genes.
+
+# pbmc3k
+
+First lets analyse the popular pbmc3k dataset following Seurat guided clustering tutorial.
+We ll first download the data and create the Seurat object.
+```{r}
+#https://support.10xgenomics.com/single-cell-gene-expression/datasets/1.1.0/pbmc3k
+download.file('https://cf.10xgenomics.com/samples/cell/pbmc3k/pbmc3k_filtered_gene_bc_matrices.tar.gz', str_glue('{folder}pbmc3k_data.tar.gz'))
+untar(str_glue('{folder}pbmc3k_data.tar.gz'), exdir = str_glue('{folder}data'))
+
+pbmc_seurat <- CreateSeuratObject(counts = Read10X(str_glue('{folder}data/filtered_gene_bc_matrices/hg19/')), min.cells = 3, min.features = 200)
+pbmc_seurat[["percent.mt"]] <- PercentageFeatureSet(pbmc_seurat, pattern = "^MT-")
+
+pbmc_seurat <- subset(pbmc_seurat, subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 5)
+```
+
+Next we ll perform the basic analysis pipeline following the tutorials suggestions. We ll also repeat the exact same analysis except we ll use GTestimate() instead of NormalizeData()
+
+```{r}
+pbmc_seurat_ML <- pbmc_seurat %>%
+  NormalizeData %>%
+  FindVariableFeatures %>%
+  ScaleData %>%
+  RunPCA(ndim = 10) %>%
+  FindNeighbors(dims= 1:10) %>%
+  FindClusters(resolution = 0.5) %>%
+  RunUMAP(dims = 1:10)
+
+pbmc_seurat_GT <- pbmc_seurat %>%
+  GTestimate %>%
+  FindVariableFeatures %>%
+  ScaleData %>%
+  RunPCA(ndim = 10) %>%
+  FindNeighbors(dims= 1:10) %>%
+  FindClusters(resolution = 0.5) %>%
+  RunUMAP(dims = 1:10)
+```
+
+Next we can annotate the clusters and look at the resulting UMAPs:
+
+```{r}
+new.cluster.ids <- c("Naive CD4 T", "CD14+ Mono", "Memory CD4 T", "B", "CD8 T", "FCGR3A+ Mono",
+    "NK", "DC", "Platelet")
+names(new.cluster.ids) <- levels(pbmc_seurat_ML)
+pbmc_seurat_ML <- RenameIdents(pbmc_seurat_ML, new.cluster.ids)
+pbmc_seurat_GT <- RenameIdents(pbmc_seurat_GT, new.cluster.ids)
+
+umap_seurat_ML <- Embeddings(pbmc_seurat_ML, reduction = 'umap') %>%
+  as.data.frame %>%
+  rownames_to_column(var = 'Cell') %>%
+  as_tibble %>%
+  cbind(`Celltype` = Idents(pbmc_seurat_ML)) %>%
+  mutate(Method = 'NormalizeData')
+
+umap_seurat_GT <- Embeddings(pbmc_seurat_GT, reduction = 'umap') %>%
+  as.data.frame %>%
+  rownames_to_column(var = 'Cell') %>%
+  as_tibble %>%
+  cbind(`Celltype` = Idents(pbmc_seurat_GT)) %>%
+  mutate(Method = 'GTestimate')
+
+umap_combined <- rbind(umap_seurat_ML, umap_seurat_GT) %>% mutate(Method = factor(Method, levels = c('NormalizeData', 'GTestimate')))
+
+pbmc_umap <- ggplot(umap_combined) + geom_point(aes(x = umap_1, y = umap_2, col = Celltype), size = umap_dot_size) + facet_wrap(~Method, scales = 'free') + theme(legend.position = 'bottom')# + geom_text_repel(data = umap_combined %>% group_by(Celltype, Method) %>% summarise(umap_1 = mean(umap_1), umap_2 = mean(umap_2)), aes(x = umap_1, y = umap_2, label = Celltype), point.size = NA,  max.overlaps = 100)
+
+pbmc_umap
+ggsave(filename = str_glue('{folder}pbmc_umap_clusters.png'), pbmc_umap, width = 6.6, height = 4)
+saveRDS(file = str_glue('{folder}pbmc_umap_clusters.Rds'), pbmc_umap)
+
+umap_combined_differences <- Embeddings(pbmc_seurat_GT, reduction = 'umap') %>%
+  as.data.frame %>%
+  rownames_to_column(var = 'Cell') %>%
+  as_tibble %>%
+  cbind(`Celltype_GT` = Idents(pbmc_seurat_GT), `Celltype_ML` = Idents(pbmc_seurat_ML)) %>%
+  mutate(`changed cluster` = Celltype_GT != Celltype_ML) %>%
+  mutate(`changed cluster?` = replace(`changed cluster`, `changed cluster` == F, 'no')) %>%
+  mutate(`changed cluster?` = replace(`changed cluster?`, `changed cluster` == T, 'yes')) %>%
+  mutate(`changed cluster?` = factor(`changed cluster?`, levels = c('yes', 'no')))
+
+umap_identity <- ggplot() +
+  geom_point(data = umap_combined_differences %>% filter(`changed cluster` == F),
+             aes(x = umap_1, y = umap_2, col = `changed cluster?`), size = umap_dot_size) +
+  geom_point(data = umap_combined_differences %>% filter(`changed cluster` == T),
+             aes(x = umap_1, y = umap_2, col = `changed cluster?`), size = umap_dot_size) +
+  theme(legend.position = 'bottom')
+
+umap_identity
+ggsave(filename = str_glue('{folder}pbmc_umap_identity.png'), umap_identity, width = 3.4, height = 3.5)
+saveRDS(file = str_glue('{folder}pbmc_umap_identity.Rds'), umap_identity)
+
+precent_change_ident <- sum(umap_combined_differences$`changed cluster`)/length(umap_combined_differences$`changed cluster`)*100
+
+```
+`r precent_change_ident` % of cells changed cell-type identity when clustered after GTestimate() instead of NormalizeData().
+
+To show how the normalized expression of individual genes changed we can visualize the expression of some celltype specific genes in the different clusters.
+
+```{r}
+#marker_genes <- c("MS4A1", "GNLY", "CD3E", "CD14", "FCER1A", "FCGR3A", "LYZ", "PPBP", "CD8A", "CD79A","NKG7", "PF4")
+marker_genes <- c("IL7R", "CCR7", "CD14", "LYZ", "S100A4", "MS4A1", "CD8A", "FCGR3A", "MS4A7", "GNLY", "NKG7", "FCER1A", "CST3", "PPBP")
+
+marker_tbl_ML <- GetAssayData(pbmc_seurat_ML, assay = 'RNA', slot = 'data')[marker_genes,] %>%
+  as.matrix() %>%
+  t %>%
+  as.data.frame() %>%
+  rownames_to_column(var = 'Cell') %>%
+  as_tibble() %>%
+  cbind(Celltype = Idents(pbmc_seurat_ML), nCount = pbmc_seurat_ML$nCount_RNA) %>%
+  mutate(Method = 'NormalizeData') %>%
+  pivot_longer(all_of(marker_genes), values_to = 'Expression', names_to = 'Gene') %>%
+  filter(Expression != 0)
+
+marker_tbl_GT <- GetAssayData(pbmc_seurat_GT, assay = 'GTestimate', slot = 'data')[marker_genes,] %>%
+  as.matrix() %>%
+  t %>%
+  as.data.frame() %>%
+  rownames_to_column(var = 'Cell') %>%
+  as_tibble() %>%
+  cbind(Celltype = Idents(pbmc_seurat_GT), nCount = pbmc_seurat_GT$nCount_RNA) %>%
+  mutate(Method = 'GTestimate') %>%
+  pivot_longer(all_of(marker_genes), values_to = 'Expression', names_to = 'Gene') %>%
+  filter(Expression != 0)
+
+marker_tbl_combined <- rbind(marker_tbl_ML, marker_tbl_GT) %>% mutate(Method = factor(Method, levels = c('NormalizeData', 'GTestimate')))
+
+ggplot(marker_tbl_combined) + geom_boxplot(aes(x = Celltype, y = Expression, fill = Method)) + facet_wrap(~Gene) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+nkg7_plot <- ggplot(marker_tbl_combined %>% filter(Gene == 'NKG7')) +
+  geom_boxplot(aes(x = Celltype, y = Expression, fill = Method), outlier.size = .3, outlier.stroke = .3, linewidth = .3) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), axis.title.x = element_blank())
+
+nkg7_plot
+ggsave(filename = str_glue('{folder}nkg7_plot.png'), nkg7_plot, width = 4, height = 2)
+saveRDS(file = str_glue('{folder}nkg7_plot.Rds'), nkg7_plot)
+```
+
+We can also make a scatter-plot comparing the estimates of NormalizeData() and GTestimate() for an example gene:
+
+```{r}
+scatter_tbl <- marker_tbl_combined %>%
+  filter(Gene == 'LYZ') %>%
+  pivot_wider(values_from = Expression, names_from = Method)
+
+lyz_scatter_pbmc <- ggplot(scatter_tbl) +
+  geom_point(aes(x = NormalizeData, y = GTestimate, col = nCount), size = 0.5) +
+  geom_abline(slope = 1, col = 'red') +
+  scale_x_continuous(limits = c(0,6)) +
+  scale_y_continuous(limits = c(0,6)) +
+  scale_color_viridis_c()
+
+lyz_scatter_pbmc
+ggsave(filename = str_glue('{folder}lyz_scatter_pbmc.pdf'), lyz_scatter_pbmc, width = 3.4, height = 3.5)
+saveRDS(file = str_glue('{folder}lyz_scatter_pbmc.Rds'), lyz_scatter_pbmc)
+
+
+```
+
+The GTestimate function also saves  the estimated amount of missing-mass per cell in a meta data vector of the Seurat object. We can visualize this as a histogram:
+
+```{r}
+mm_tbl <- tibble(`Missing Mass` = pbmc_seurat_GT$missing_mass)
+mm_hist <- ggplot(mm_tbl) + geom_histogram(aes(x = `Missing Mass`), bins = 30, fill = "#3182BD", color = 'white') + theme_classic()
+
+mm_hist
+
+ggsave(filename = str_glue('{folder}mm_hist.pdf'), mm_hist, width = 3.4, height = 3)
+saveRDS(file = str_glue('{folder}mm_hist.Rds'), mm_hist)
+
+```
+
+# Developing Pancreas
+Since the pbmc3k data-set has pretty well defined cell-types we will next analyse a data-set with more continuous cell-type changes.
+For this we chose the popular pancreas development data-set endocrinogenesis_day15, which is often used as an example in RNA-velocity approaches.
+
+Here we ll download and import the data:
+
+```{r}
+dir_create(str_glue('{folder}data'))
+download.file('https://github.com/theislab/scvelo_notebooks/raw/master/data/Pancreas/endocrinogenesis_day15.h5ad', destfile = str_glue('{folder}data/endocrinogenesis_day15.h5ad'))
+
+adata <- anndata::read_h5ad(str_glue('{folder}data/endocrinogenesis_day15.h5ad'))
+
+pancreas_seurat <- CreateSeuratObject(t(as.matrix(adata$X)), assay = "RNA")
+pancreas_seurat <- AddMetaData(pancreas_seurat, adata$obs)
+```
+
+Next we perform some basic Seurat based clustering using both NormalizeData() and GTestimate() to construct two different UMAPs:
+
+```{r}
+pancreas_seurat_ML <- pancreas_seurat %>%
+  NormalizeData() %>%
+  FindVariableFeatures() %>%
+  ScaleData() %>%
+  RunPCA(ndim = 50) %>%
+  FindNeighbors(dims = 1:50) %>%
+  FindClusters(resolution = 0.4) %>%
+  RunUMAP(dims = 1:50)
+
+pancreas_seurat_GT <- pancreas_seurat %>%
+  GTestimate() %>%
+  FindVariableFeatures() %>%
+  ScaleData() %>%
+  RunPCA(ndim = 50) %>%
+  FindNeighbors(dims = 1:50) %>%
+  FindClusters(resolution = 0.4) %>%
+  RunUMAP(dims = 1:50)
+
+```
+
+We can visualize the resulting clusters on the umap:
+
+```{r}
+pancreas_umap_seurat_ML <- Embeddings(pancreas_seurat_ML, reduction = 'umap') %>%
+  as.data.frame %>%
+  rownames_to_column(var = 'Cell') %>%
+  as_tibble %>%
+  cbind(`Seurat clusters` = pancreas_seurat_ML$seurat_clusters,
+        Clusters = pancreas_seurat_ML$clusters,
+        Coarse_Clusters = pancreas_seurat_ML$clusters_coarse) %>%
+  mutate(Method = 'NormalizeData')
+
+pancreas_umap_seurat_GT <- Embeddings(pancreas_seurat_GT, reduction = 'umap') %>%
+  as.data.frame %>%
+  rownames_to_column(var = 'Cell') %>%
+  as_tibble %>%
+  cbind(`Seurat clusters` = pancreas_seurat_GT$seurat_clusters,
+        Clusters = pancreas_seurat_GT$clusters,
+        Coarse_Clusters = pancreas_seurat_GT$clusters_coarse) %>%
+  mutate(Method = 'GTestimate')
+
+pancreas_umap_combined <- rbind(pancreas_umap_seurat_ML, pancreas_umap_seurat_GT) %>% mutate(Method = factor(Method, levels = c('NormalizeData', 'GTestimate')))
+
+pancreas_umap <- ggplot(pancreas_umap_combined) + geom_point(aes(x = umap_1, y = umap_2, col = `Seurat clusters`), size = umap_dot_size) + facet_wrap(~Method, scales = 'free') + theme(legend.position = 'bottom')
+pancreas_umap_ML <- ggplot(pancreas_umap_combined %>% filter(Method == 'NormalizeData')) + geom_point(aes(x = umap_1, y = umap_2, col = `Seurat clusters`), size = umap_dot_size) + theme(legend.position = 'bottom')
+pancreas_umap_GT <- ggplot(pancreas_umap_combined %>% filter(Method == 'GTestimate')) + geom_point(aes(x = umap_1, y = umap_2, col = `Seurat clusters`), size = umap_dot_size) + theme(legend.position = 'bottom')
+
+ggsave(filename = str_glue('{folder}pancreas_umap_ML.png'), pancreas_umap_ML, width = 3.4, height = 3)
+saveRDS(file = str_glue('{folder}pancreas_umap_ML.Rds'), pancreas_umap_ML)
+
+ggsave(filename = str_glue('{folder}pancreas_umap_GT.png'), pancreas_umap_GT, width = 3.4, height = 3)
+saveRDS(file = str_glue('{folder}pancreas_umap_GT.Rds'), pancreas_umap_GT)
+
+pancreas_umap
+
+ggsave(filename = str_glue('{folder}pancreas_umap.png'), pancreas_umap, width = 3.4, height = 3)
+saveRDS(file = str_glue('{folder}pancreas_umap.Rds'), pancreas_umap)
+```
+
+Importantly, this clustering is different from the cluster annotation in the original data-set. 
+The original clustering and annotation was performed on a larger data-set while this is only a subset.
+
+This subset results in different clusters. The original clustering shown on our UMAP would look like this:
+
+```{r}
+Idents(pancreas_seurat_GT) <- pancreas_seurat_GT$clusters
+Idents(pancreas_seurat_ML) <- pancreas_seurat_ML$clusters
+
+DimPlot(pancreas_seurat_ML) + DimPlot(pancreas_seurat_GT)
+```
+
+And we can again highlight the cells which changed clustering between NormalizeData and GTestimate:
+
+
+```{r}
+Idents(pancreas_seurat_GT) <- pancreas_seurat_GT$seurat_clusters
+Idents(pancreas_seurat_ML) <- pancreas_seurat_ML$seurat_clusters
+
+umap_combined_differences_pancreas <- Embeddings(pancreas_seurat_GT, reduction = 'umap') %>%
+  as.data.frame %>%
+  rownames_to_column(var = 'Cell') %>%
+  as_tibble %>%
+  cbind(`Celltype_ML` = fct_recode(Idents(pancreas_seurat_ML), cluster_1 = '5', cluster_2 = '0', cluster_3 = '6', cluster_4 = '3', cluster_5 = '4', cluster_6 = '7', cluster_7 = '1', cluster_8 = '2'), `Celltype_GT` = fct_recode(Idents(pancreas_seurat_GT), cluster_1 = '3', cluster_2 = '1', cluster_3 = '5', cluster_4 = '4', cluster_5 = '2', cluster_6 = '7', cluster_7 = '0', cluster_8 = '6')) %>%
+  mutate(`changed cluster` = Celltype_GT != Celltype_ML) %>%
+  mutate(`changed cluster?` = replace(`changed cluster`, `changed cluster` == F, 'no')) %>%
+  mutate(`changed cluster?` = replace(`changed cluster?`, `changed cluster` == T, 'yes')) %>%
+  mutate(`changed cluster?` = factor(`changed cluster?`, levels = c('yes', 'no')))
+
+umap_identity_pancreas <- ggplot() +
+  geom_point(data = umap_combined_differences_pancreas %>% filter(`changed cluster` == F),
+             aes(x = umap_1, y = umap_2, col = `changed cluster?`), size = 0.2) +
+  geom_point(data = umap_combined_differences_pancreas %>% filter(`changed cluster` == T),
+             aes(x = umap_1, y = umap_2, col = `changed cluster?`), size = 0.2) +
+  theme(legend.position = 'bottom')
+
+umap_identity_pancreas
+ggsave(filename = str_glue('{folder}pancreas_umap_identity.png'), umap_identity_pancreas, width = 3.4, height = 3.5)
+saveRDS(file = str_glue('{folder}pancreas_umap_identity.Rds'), umap_identity_pancreas)
+
+precent_change_ident_pancreas <- sum(umap_combined_differences_pancreas$`changed cluster`)/length(umap_combined_differences_pancreas$`changed cluster`)*100
+
+```
+
+`r precent_change_ident_pancreas` % of cells changed cell-type identity when clustered after GTestimate() instead of NormalizeData().
+
+We will also show the changes in clustering using a Sankey diagram:
+
+```{r umap_same_colors}
+
+pancreas_umap_combined <- pancreas_umap_combined %>%
+  cbind(Cluster = c(fct_recode(Idents(pancreas_seurat_ML), `1` = '5', `2` = '0', `3` = '6', `4` = '3', `5` = '4', `6` = '7', `7` = '1', `8` = '2'), fct_recode(Idents(pancreas_seurat_GT), `1` = '3', `2` = '1', `3` = '5', `4` = '4', `5` = '2', `6` = '7', `7` = '0', `8` = '6'))) %>%
+  as_tibble() %>%
+  mutate(Cluster = factor(Cluster, levels = 1:8))
+
+pancreas_umap_same_clusters <- ggplot(pancreas_umap_combined) + geom_point(aes(x = umap_1, y = umap_2, col = Cluster), size = umap_dot_size) + facet_wrap(~Method, scales = 'free') + theme(legend.position = 'bottom')
+pancreas_umap_ML_same_clusters <- ggplot(pancreas_umap_combined %>% filter(Method == 'NormalizeData')) + geom_point(aes(x = umap_1, y = umap_2, col = Cluster), size = umap_dot_size) + theme(legend.position = 'bottom')
+pancreas_umap_GT_same_clusters <- ggplot(pancreas_umap_combined %>% filter(Method == 'GTestimate')) + geom_point(aes(x = umap_1, y = umap_2, col = Cluster), size = umap_dot_size) + theme(legend.position = 'bottom')
+
+ggsave(filename = str_glue('{folder}pancreas_umap_ML_same_clusters.png'), pancreas_umap_ML_same_clusters, width = 3.4, height = 3)
+saveRDS(file = str_glue('{folder}pancreas_umap_ML_same_clusters.Rds'), pancreas_umap_ML_same_clusters)
+
+ggsave(filename = str_glue('{folder}pancreas_umap_GT_same_clusters.png'), pancreas_umap_GT_same_clusters, width = 3.4, height = 3)
+saveRDS(file = str_glue('{folder}pancreas_umap_GT_same_clusters.Rds'), pancreas_umap_GT_same_clusters)
+
+ggsave(filename = str_glue('{folder}pancreas_umap_same_clusters.png'), pancreas_umap_same_clusters, width = 3.4, height = 3)
+saveRDS(file = str_glue('{folder}pancreas_umap_same_clusters.Rds'), pancreas_umap_same_clusters)
+
+pancreas_alluvial <- pancreas_umap_combined %>% 
+  select(Cell, Method, Cluster) %>%
+  pivot_wider(values_from = Cluster, names_from = Method) %>%
+  group_by(NormalizeData, GTestimate) %>%
+  summarize(`#Cells` = n()) %>%
+  mutate(changed_ident = NormalizeData != GTestimate) %>%
+  pivot_longer(c(NormalizeData, GTestimate), names_to = 'Method', values_to = 'Cluster') %>%
+  group_by(Method) %>%
+  mutate(group = row_number(), Cluster = factor(Cluster, levels = 1:8), Method = factor(Method, levels = c('NormalizeData','GTestimate')))
+
+cluster_flow_plot <- ggplot(pancreas_alluvial) + 
+  geom_flow(alpha = .8, aes(x = Method, stratum = Cluster, alluvium = group, y = `#Cells`, fill = changed_ident, col = changed_ident)) +
+  scale_color_manual(values = c('darkgrey', 'black')) + 
+  geom_stratum(alpha = 1, aes(x = Method, stratum = Cluster, alluvium = group, y = `#Cells`, fill = Cluster)) +
+  scale_fill_manual(values = c(gg_color_hue(8), 'darkgrey', 'black')) +
+  geom_label(stat = "stratum", aes(x = Method, stratum = Cluster, alluvium = group, y = `#Cells`, label = Cluster, fill = Cluster), label.padding = unit(0.05, "cm"), size = 6/.pt) +
+  theme(legend.position = 'none') +
+  ggtitle('Cluster Identity')
+cluster_flow_plot
+ggsave(filename = str_glue('{folder}cluster_flow_plot.png'), cluster_flow_plot, width = 3.4, height = 3)
+saveRDS(file = str_glue('{folder}cluster_flow_plot.Rds'), cluster_flow_plot)
+```
+

@@ -1,0 +1,359 @@
+---
+title: "Downsampling simulations"
+output: 
+  html_document:
+    css: style.css
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width=10, fig.height=6)
+library(Seurat)
+library(tidyverse)
+library(GTestimate)
+
+source('functions/downsample_vct.R')
+
+folder <- 'downsampling_results/'
+dir.create(folder)
+
+set.seed(1)
+```
+
+# Introduction
+
+In this Report we want to build a very simple simulation of the effect of the number of UMIs/cell on the relative expression estimation and the distances between cells.
+
+First we will use the cell with the highest number of UMIs from our cta-seq experiment as a ground-truth.
+
+```{r load_data}
+deep_counts <- readRDS(file = 'umi_tools_corrected_deep_counts.RDS')
+
+deepest_cell <- deep_counts %>%
+  select(gene, `TCTCTGGGTGTGCTTA-1`) %>%
+  mutate(ground_truth = `TCTCTGGGTGTGCTTA-1`/sum(`TCTCTGGGTGTGCTTA-1`) ) 
+
+deep_count_mtx <- deep_counts %>% select(-gene) %>% as.matrix()
+rownames(deep_count_mtx) <- deep_counts$gene
+
+deep_count_mtx_norm <- t(t(deep_count_mtx)/colSums(deep_count_mtx))
+
+deep_dists <- dist(t(deep_count_mtx_norm), diag = T) %>% as.matrix
+deep_dists <- deep_dists %>% replace(lower.tri(deep_dists),0)
+
+deep_dist_list <- deep_dists %>% as.numeric()
+deep_dist_list_filtered <- deep_dist_list[deep_dist_list != 0]
+
+```
+
+The mean Euclidean distance between our deep sequenced cells is `r mean(deep_dist_list_filtered)`
+
+# Random Sampling
+
+Now we sample different numbers of UMIs from this ground-truth with replacement, and calculate the errors made when estimating the relative gene expression vector using the Maximum-Likelihood and the Good-Turing estimator.
+
+```{r build_downsampled_error_tibble}
+sizes <- 10**(seq(2, 5, length.out = 20))
+
+deepest_cell_vct <- as.numeric(deepest_cell$`TCTCTGGGTGTGCTTA-1`)
+names(deepest_cell_vct) <- deepest_cell$gene
+
+re_error_tbl <- tibble()
+for (i in sizes){
+  sampled_matrix <- downsample_vct(deepest_cell_vct, n = 1000, size = i)
+  
+  ML_matrix <- t(t(sampled_matrix)/colSums(sampled_matrix))
+  GT_matrix <- GTestimate(sampled_matrix, size.factor = 1, log1p.transform = F)
+  
+  ML_abs_errors <- colSums(apply(ML_matrix, 2, function(x) abs(x - deepest_cell$ground_truth)))
+  GT_abs_errors <- colSums(apply(GT_matrix, 2, function(x) abs(x - deepest_cell$ground_truth)))
+  
+  ML_sq_errors <- colSums(apply(ML_matrix, 2, function(x) (x - deepest_cell$ground_truth)**2))
+  GT_sq_errors <- colSums(apply(GT_matrix, 2, function(x) (x - deepest_cell$ground_truth)**2))
+  
+  re_error_tbl <- re_error_tbl %>%
+    rbind(tibble(Error = ML_abs_errors, error_type = 'absolute', size = i, Method = 'ML')) %>%
+    rbind(tibble(Error = ML_sq_errors, error_type = 'squared', size = i, Method = 'ML')) %>%
+    rbind(tibble(Error = GT_abs_errors, error_type = 'absolute', size = i, Method = 'GT')) %>%
+    rbind(tibble(Error = GT_sq_errors, error_type = 'squared', size = i, Method = 'GT'))
+}
+```
+
+
+# Estimation Error
+Now we can summarize the results for the estimation error and make some plots:
+
+```{r summarize_error}
+re_error_tbl_mean <- re_error_tbl %>%
+  group_by(error_type, Method, size) %>%
+  summarize(mean_error = mean(Error), sd = sd(Error)) %>% 
+  #mutate(conv_margin = qt(0.975, df = n() - 1) * sd/sqrt(n())) %>%
+  mutate(conv_margin = qt(0.975, df = n() - 1) * sd) %>%
+  mutate(conv_lower = mean_error - conv_margin, conv_upper = mean_error + conv_margin) %>%
+  mutate(Method = factor(Method, levels = c('ML', 'GT')))
+  
+combined_error_plot <- ggplot(re_error_tbl_mean) +
+  geom_line(aes(x = size, y = mean_error, col = Method)) +
+  geom_ribbon(aes(x = size, ymin = conv_lower, ymax = conv_upper, fill = Method), alpha = 0.3) + 
+  facet_wrap(~error_type, scales = 'free') + 
+  scale_x_continuous(trans = 'log10') + 
+  ylab('Mean Estimation Error') +
+  xlab('#Reads')
+
+max_abs <- re_error_tbl_mean %>% filter(error_type == 'absolute') %>% pluck('conv_upper') %>% max
+
+abs_error_plot <- ggplot(re_error_tbl_mean %>% filter(error_type == 'absolute')) +
+  geom_line(aes(x = size, y = mean_error, col = Method)) +
+  geom_ribbon(aes(x = size, ymin = conv_lower, ymax = conv_upper, fill = Method), alpha = 0.3) + 
+  scale_x_continuous(trans = 'log10') + 
+  scale_y_continuous(limits = c(0, max_abs)) + 
+  ylab('Mean Error') +
+  xlab('#Reads') +
+  ggtitle('Absolute Error')
+
+max_sq <- re_error_tbl_mean %>% filter(error_type == 'squared') %>% pluck('conv_upper') %>% max
+
+sq_error_plot <- ggplot(re_error_tbl_mean %>% filter(error_type == 'squared')) +
+  geom_line(aes(x = size, y = mean_error, col = Method)) +
+  geom_ribbon(aes(x = size, ymin = conv_lower, ymax = conv_upper, fill = Method), alpha = 0.3) + 
+  scale_x_continuous(trans = 'log10') + 
+  scale_y_continuous(limits = c(0, max_sq)) + 
+  ylab('Mean Error') +
+  xlab('#Reads') +
+  ggtitle('Squared Error')
+
+combined_error_plot
+
+ggsave(str_glue('{folder}abs_error_plot.pdf'), abs_error_plot, width = 6.6, height = 4)
+ggsave(str_glue('{folder}sq_error_plot.pdf'), sq_error_plot, width = 6.6, height = 4)
+saveRDS(file = str_glue('{folder}abs_error_plot.Rds'), abs_error_plot)
+saveRDS(file = str_glue('{folder}sq_error_plot.Rds'), sq_error_plot)
+
+```
+
+# Distances between cells
+
+Now let's look at the distances between cells, first  the average distance between two random samplings of the same cell.
+This gives us some inside on the baseline sampling noise.
+
+```{r same_dists}
+re_dists_tbl <- tibble()
+for (i in sizes){
+  sampled_matrix_1 <- downsample_vct(deepest_cell_vct, n = 1000, size = i)
+  sampled_matrix_2 <- downsample_vct(deepest_cell_vct, n = 1000, size = i)
+
+  ML_matrix_1 <- t(t(sampled_matrix_1)/colSums(sampled_matrix_1))
+  GT_matrix_1 <- GTestimate(sampled_matrix_1, size.factor = 1, log1p.transform = F)
+  
+  ML_matrix_2 <- t(t(sampled_matrix_2)/colSums(sampled_matrix_2))
+  GT_matrix_2 <- GTestimate(sampled_matrix_2, size.factor = 1, log1p.transform = F)
+  
+  for(j in 1:1000){
+    ML_abs_dist <- sum(abs(ML_matrix_1[,j] - ML_matrix_2[,j]))
+    GT_abs_dist <- sum(abs(GT_matrix_1[,j] - GT_matrix_2[,j]))
+    
+    ML_sq_dist <- sqrt(sum((ML_matrix_1[,j] - ML_matrix_2[,j])**2))
+    GT_sq_dist <- sqrt(sum((GT_matrix_1[,j] - GT_matrix_2[,j])**2))
+    
+    re_dists_tbl <- re_dists_tbl %>%
+      rbind(tibble(Distance = ML_abs_dist, Metric = 'Manhattan', Method = 'ML', size = i, comparisson = 'same')) %>%
+      rbind(tibble(Distance = GT_abs_dist, Metric = 'Manhattan', Method = 'GT', size = i, comparisson = 'same')) %>%
+      rbind(tibble(Distance = ML_sq_dist, Metric = 'Euclidean', Method = 'ML', size = i, comparisson = 'same')) %>%
+      rbind(tibble(Distance = GT_sq_dist, Metric = 'Euclidean', Method = 'GT', size = i, comparisson = 'same'))
+  }
+}
+```
+
+And we can repeat this for two different cells from our cta-seq data-set, here we ll use the two cells with the most UMIs, which are from two different cell-types.
+
+```{r diff_dists}
+second_deepest_cell <- deep_counts %>%
+  select(gene, `GGCTTTCGTGTGTCGC-1`) %>%
+  mutate(ground_truth = `GGCTTTCGTGTGTCGC-1`/sum(`GGCTTTCGTGTGTCGC-1`) ) 
+
+second_deepest_cell_vct <- as.numeric(second_deepest_cell$`GGCTTTCGTGTGTCGC-1`)
+names(second_deepest_cell_vct) <- second_deepest_cell$gene
+
+for (i in sizes){
+  sampled_matrix_1 <- downsample_vct(deepest_cell_vct, n = 1000, size = i)
+  sampled_matrix_2 <- downsample_vct(second_deepest_cell_vct, n = 1000, size = i)
+
+  ML_matrix_1 <- t(t(sampled_matrix_1)/colSums(sampled_matrix_1))
+  GT_matrix_1 <- GTestimate(sampled_matrix_1, size.factor = 1, log1p.transform = F)
+  
+  ML_matrix_2 <- t(t(sampled_matrix_2)/colSums(sampled_matrix_2))
+  GT_matrix_2 <- GTestimate(sampled_matrix_2, size.factor = 1, log1p.transform = F)
+  
+  for(j in 1:1000){
+    ML_abs_dist <- sum(abs(ML_matrix_1[,j] - ML_matrix_2[,j]))
+    GT_abs_dist <- sum(abs(GT_matrix_1[,j] - GT_matrix_2[,j]))
+    
+    ML_sq_dist <- sqrt(sum((ML_matrix_1[,j] - ML_matrix_2[,j])**2))
+    GT_sq_dist <- sqrt(sum((GT_matrix_1[,j] - GT_matrix_2[,j])**2))
+    
+    re_dists_tbl <- re_dists_tbl %>%
+      rbind(tibble(Distance = ML_abs_dist, Metric = 'Manhattan', Method = 'ML', size = i, comparisson = 'different')) %>%
+      rbind(tibble(Distance = GT_abs_dist, Metric = 'Manhattan', Method = 'GT', size = i, comparisson = 'different')) %>%
+      rbind(tibble(Distance = ML_sq_dist, Metric = 'Euclidean', Method = 'ML', size = i, comparisson = 'different')) %>%
+      rbind(tibble(Distance = GT_sq_dist, Metric = 'Euclidean', Method = 'GT', size = i, comparisson = 'different'))
+  }
+}
+```
+
+# Visualization of Distances
+
+we can plot the results distances at various UMIs/cell for the same cell twice:
+
+```{r summarize_same_dists}
+re_dists_tbl_same_mean <- re_dists_tbl %>%
+  filter(comparisson == 'same') %>%
+  group_by(Metric, Method, size) %>%
+  summarize(mean_distance = mean(Distance), sd = sd(Distance)) %>% 
+  #mutate(conv_margin = qt(0.975, df = n() - 1) * sd/sqrt(n())) %>%
+  mutate(conv_margin = qt(0.975, df = n() - 1) * sd) %>%
+  mutate(conv_lower = mean_distance - conv_margin, conv_upper = mean_distance + conv_margin) %>%
+  mutate(Method = factor(Method, levels = c('ML', 'GT')))
+
+re_dists_tbl_different_mean <- re_dists_tbl %>%
+  filter(comparisson == 'different') %>%
+  group_by(Metric, Method, size) %>%
+  summarize(mean_distance = mean(Distance), sd = sd(Distance)) %>% 
+  #mutate(conv_margin = qt(0.975, df = n() - 1) * sd/sqrt(n())) %>%
+  mutate(conv_margin = qt(0.975, df = n() - 1) * sd) %>%
+  mutate(conv_lower = mean_distance - conv_margin, conv_upper = mean_distance + conv_margin) %>%
+  mutate(Method = factor(Method, levels = c('ML', 'GT')))
+
+max_euclidean_diff <- re_dists_tbl_different_mean %>% filter(Metric == 'Euclidean') %>% pluck('conv_upper') %>% max
+max_euclidean_same <- re_dists_tbl_same_mean %>% filter(Metric == 'Euclidean') %>% pluck('conv_upper') %>% max
+max_euclidean <- max(max_euclidean_diff, max_euclidean_same)
+
+max_manhattan_diff <- re_dists_tbl_different_mean %>% filter(Metric == 'Manhattan') %>% pluck('conv_upper') %>% max
+max_manhattan_same <- re_dists_tbl_same_mean %>% filter(Metric == 'Manhattan') %>% pluck('conv_upper') %>% max
+max_manhattan <- max(max_manhattan_diff, max_manhattan_same)
+
+combined_same_dist_plot <- ggplot(re_dists_tbl_same_mean) +
+  geom_line(aes(x = size, y = mean_distance, col = Method)) +
+  geom_ribbon(aes(x = size, ymin = conv_lower, ymax = conv_upper, fill = Method), alpha = 0.3) + 
+  facet_wrap(~Metric, scales = 'free') +
+  geom_hline(yintercept = 0) + 
+  scale_x_continuous(trans = 'log10') +
+  xlab('#Reads') +
+  ylab('Mean Distance')
+
+manhattan_same_dist_plot <- ggplot(re_dists_tbl_same_mean %>% filter(Metric == 'Manhattan')) +
+  geom_line(aes(x = size, y = mean_distance, col = Method)) +
+  geom_ribbon(aes(x = size, ymin = conv_lower, ymax = conv_upper, fill = Method), alpha = 0.3) +
+  geom_hline(yintercept = 0) + 
+  scale_x_continuous(trans = 'log10') +
+  xlab('#Reads') +
+  ylab('Mean Distance') + 
+  ggtitle('Manhattan Distance') +
+  scale_y_continuous(limits = c(0, max_manhattan))
+
+euclidean_same_dist_plot <- ggplot(re_dists_tbl_same_mean %>% filter(Metric == 'Euclidean')) +
+  geom_line(aes(x = size, y = mean_distance, col = Method)) +
+  geom_ribbon(aes(x = size, ymin = conv_lower, ymax = conv_upper, fill = Method), alpha = 0.3) +
+  geom_hline(data = tibble(distance = 0), aes(yintercept = distance, linetype = 'ground truth')) + 
+  scale_x_continuous(trans = 'log10') +
+  xlab('#Reads') +
+  ylab('Mean Distance') + 
+  ggtitle('Euclidean Distance') +
+  scale_linetype_manual(name = element_blank(), values = 2) +
+  scale_y_continuous(limits = c(0, max_euclidean))
+
+combined_same_dist_plot
+
+ggsave(str_glue('{folder}manhattan_same_dist_plot.pdf'), manhattan_same_dist_plot, width = 6.6, height = 4)
+ggsave(str_glue('{folder}euclidean_same_dist_plot.pdf'), euclidean_same_dist_plot, width = 6.6, height = 4)
+saveRDS(file = str_glue('{folder}manhattan_same_dist_plot.Rds'), manhattan_same_dist_plot)
+saveRDS(file = str_glue('{folder}euclidean_same_dist_plot.Rds'), euclidean_same_dist_plot)
+
+```
+
+
+And again for two different cells:
+
+```{r summarize_different_dists}
+real_manhattan_dist <- sum(abs(deepest_cell$ground_truth - second_deepest_cell$ground_truth))
+real_euclidean_dist <- sqrt(sum((deepest_cell$ground_truth - second_deepest_cell$ground_truth)**2))
+
+
+combined_different_dist_plot <- ggplot(re_dists_tbl_different_mean) +
+  geom_line(aes(x = size, y = mean_distance, col = Method)) +
+  geom_ribbon(aes(x = size, ymin = conv_lower, ymax = conv_upper, fill = Method), alpha = 0.3) + 
+  facet_wrap(~Metric, scales = 'free') +
+  scale_x_continuous(trans = 'log10') +
+  xlab('#Reads') +
+  ylab('Mean Distance')
+
+manhattan_different_dist_plot <- ggplot(re_dists_tbl_different_mean %>% filter(Metric == 'Manhattan')) +
+  geom_line(aes(x = size, y = mean_distance, col = Method)) +
+  geom_ribbon(aes(x = size, ymin = conv_lower, ymax = conv_upper, fill = Method), alpha = 0.3) +
+  geom_hline(yintercept = real_manhattan_dist) +
+  scale_y_continuous(limits = c(0, max_manhattan)) +
+  scale_x_continuous(trans = 'log10') +
+  xlab('#Reads') +
+  ylab('Mean Distance') + 
+  ggtitle('Manhattan Distance')
+
+euclidean_different_dist_plot <- ggplot(re_dists_tbl_different_mean %>% filter(Metric == 'Euclidean')) +
+  geom_line(aes(x = size, y = mean_distance, col = Method)) +
+  geom_ribbon(aes(x = size, ymin = conv_lower, ymax = conv_upper, fill = Method), alpha = 0.3) +
+  geom_hline(data = tibble(distance = real_euclidean_dist), aes(yintercept = distance, linetype = 'ground truth')) +
+  scale_y_continuous(limits = c(0, max_euclidean)) +
+  scale_x_continuous(trans = 'log10') +
+  xlab('#Reads') +
+  ylab('Mean Distance') + 
+  ggtitle('Euclidean Distance') +
+  scale_linetype_manual(name = element_blank(), values = 2)
+
+combined_different_dist_plot
+
+ggsave(str_glue('{folder}manhattan_different_dist_plot.pdf'), manhattan_different_dist_plot, width = 6.6, height = 4)
+ggsave(str_glue('{folder}euclidean_different_dist_plot.pdf'), euclidean_different_dist_plot, width = 6.6, height = 4)
+saveRDS(file = str_glue('{folder}manhattan_different_dist_plot.Rds'), manhattan_different_dist_plot)
+saveRDS(file = str_glue('{folder}euclidean_different_dist_plot.Rds'), euclidean_different_dist_plot)
+
+```
+
+# Difference between same and different cells
+How large is the distance difference between same cells and different cells (signal to noise ratio)?
+
+```{r dist_difference}
+re_dists_tbl_diff <- re_dists_tbl %>%
+  group_by(comparisson, Metric, Method, size) %>%
+  summarize(mean = mean(Distance), sd = sd(Distance), n = n()) %>%
+  pivot_wider(names_from = comparisson, values_from = c(mean, sd, n)) %>%
+  mutate(dist_difference = mean_different - mean_same) %>%
+  group_by(Metric, Method, size) %>%
+  mutate(Method = factor(Method, levels = c('ML', 'GT')))
+
+combined_dist_diff_plot <- ggplot(re_dists_tbl_diff) +
+  geom_line(aes(x = size, y = dist_difference, col = Method)) +
+  facet_wrap(~Metric, scales = 'free') +
+  scale_x_continuous(trans = 'log10') +
+  xlab('#Reads') +
+  ylab('Distance Difference')
+
+euclidean_dist_diff_plot <- ggplot(re_dists_tbl_diff %>% filter(Metric == 'Euclidean')) +
+  geom_line(aes(x = size, y = dist_difference, col = Method)) +
+  scale_x_continuous(trans = 'log10') +
+  xlab('#Reads') +
+  ylab('Distance Difference') +
+  ggtitle('Euclidean Distance')
+
+manhattan_dist_diff_plot <- ggplot(re_dists_tbl_diff %>% filter(Metric == 'Manhattan')) +
+  geom_line(aes(x = size, y = dist_difference, col = Method)) +
+  scale_x_continuous(trans = 'log10') +
+  xlab('#Reads') +
+  ylab('Distance Difference') +
+  ggtitle('Manhattan Distance')
+
+combined_dist_diff_plot
+
+ggsave(str_glue('{folder}manhattan_dist_diff_plot.pdf'), manhattan_dist_diff_plot, width = 6.6, height = 4)
+ggsave(str_glue('{folder}euclidean_dist_diff_plot.pdf'), euclidean_dist_diff_plot, width = 6.6, height = 4)
+saveRDS(file = str_glue('{folder}manhattan_dist_diff_plot.Rds'), manhattan_dist_diff_plot)
+saveRDS(file = str_glue('{folder}euclidean_dist_diff_plot.Rds'), euclidean_dist_diff_plot)
+
+
+```

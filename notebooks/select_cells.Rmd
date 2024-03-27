@@ -1,0 +1,272 @@
+---
+title: "Cell selection for cta-seq"
+output: 
+  html_document:
+    css: style.css
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width=10, fig.height=6)
+library(Seurat)
+library(tidyverse)
+library(viridis)
+library(tidyseurat)
+library(ggpubr)
+library(kableExtra)
+
+source('functions/FeaturePlot_but_good.R')
+source('functions/calc_dist_sum.R')
+source('functions/filter_split_neighbours.R')
+
+folder <- 'select_cells/'
+dir.create(folder)
+```
+
+# Introduction
+In our cta-seq experiment we want to sequence the same set of cells twice at vastly different sequencing depths.
+To do so we first sequenced an aliquote of a sequencing library containing reads from roughly 20,000 cells normally at 400 million reads.
+This script reads in the results of this first run, and then selects 18 cells for target amplification according to a set of criteria.
+
+We will then PCR-amplify reads from those cells in the second aliquote by designing cell-barcode specific primers, and sequence this library again.
+
+# First  run
+
+In the first sequencing run of our cta-seq project, we re-sequenced the cDNA from the original experiment in "Amplification of human interneuron progenitors promotes brain tumors and neurological defects". 
+
+First, we shortly analyse the resulting data with a standard pipeline to check if everything looks as expected.
+
+
+```{r load_data}
+sc_data <- Read10X(data.dir = '../cta_seq/outs/filtered_feature_bc_matrix/')
+seurat_object <- CreateSeuratObject(sc_data, project = 'cta_seq_data', min.cells = 100, min.features = 0)
+```
+
+## QC
+First we visualize some basic QC metrics:
+
+```{r pre_processing}
+
+seurat_object <- AddMetaData(seurat_object, col.name = 'percent.mt', metadata = PercentageFeatureSet(seurat_object, pattern = "^MT-"))
+VlnPlot(seurat_object, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+
+plot1 <- FeatureScatter(seurat_object, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(seurat_object, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+```
+
+Based on these plots we set the QC cutoffs as nFeature_RNA > 1000 & nFeature_RNA < 5000 & percent.mt < 8.
+After this filter the QC Violinplots show these distributions:
+
+```{r filtering}
+seurat_object <- subset(seurat_object, subset = nFeature_RNA > 1000 & nFeature_RNA < 5000 & percent.mt < 8)
+
+VlnPlot(seurat_object, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+```
+
+## Preprocessing
+
+Next we perform default preprocessing steps such as Log-Normalization, Feature-Selection and Scaling. We then performed PCA and use the first 50 PCs for all following analysis steps.
+Based on the PCs we calculate the UMAP coordinates.
+
+```{r norm}
+seurat_object <- NormalizeData(seurat_object, normalization.method = "LogNormalize", scale.factor = 10000)
+```
+
+
+```{r var_features}
+seurat_object <- FindVariableFeatures(seurat_object, selection.method = "vst", nfeatures = 2000)
+```
+
+```{r scale}
+all.genes <- rownames(seurat_object)
+seurat_object <- ScaleData(seurat_object, features = all.genes)
+```
+
+```{r pca_umap}
+seurat_object <- RunPCA(seurat_object, features = VariableFeatures(object = seurat_object))
+seurat_object <- RunUMAP(seurat_object, dims = 1:50)
+```
+
+## Clustering
+
+We now use the Louvain algorithm to perform clustering in 50 dim PC space at a resolution of 0.1. This resolution is set very low to get only 4 clusters, the same as in the original paper.
+At this low resolution cluster identities are pretty obvious, but we still want to confirm them using the same marker genes as shown in the supplement of the paper.
+
+
+```{r cluster}
+seurat_object <- FindNeighbors(seurat_object, dims = 1:50)
+seurat_object <- FindClusters(seurat_object, resolution = 0.1, verbose = FALSE)
+
+
+umap_plot <- DimPlot(seurat_object, reduction = "umap") + scale_y_reverse()
+umap_plot
+ggsave(paste0(folder,'umap_plot.png'), umap_plot, width = 6.6, height=4)
+```
+
+Here we visualize the QC features again in UMAP space:
+
+```{r meta_data, fig.height=9}
+umap_data <- tibble(UMAP_1 = Embeddings(seurat_object, reduction = 'umap')[,1],
+                    UMAP_2 = Embeddings(seurat_object, reduction = 'umap')[,2],
+                    nCount_RNA = seurat_object$nCount_RNA,
+                    nFeature_RNA = seurat_object$nFeature_RNA,
+                    percent.mt = seurat_object$percent.mt, 
+                    barcode = colnames(seurat_object),
+                    seurat_clusters = seurat_object$seurat_clusters)
+
+tmp_plot_1 <- ggplot(umap_data) + geom_point(aes(x = UMAP_1, y = UMAP_2, col = nCount_RNA, nFeature_RNA = nFeature_RNA, mt = percent.mt, seurat_clusters = seurat_clusters), cex=.3) + scale_color_viridis() + scale_y_reverse() + theme(legend.position = 'bottom')
+tmp_plot_2 <- ggplot(umap_data) + geom_point(aes(x = UMAP_1, y = UMAP_2, nCount_RNA = nCount_RNA, col = nFeature_RNA, mt = percent.mt, seurat_clusters = seurat_clusters), cex=.3) + scale_color_viridis() + scale_y_reverse() + theme(legend.position = 'bottom')
+tmp_plot_3 <- ggplot(umap_data) + geom_point(aes(x = UMAP_1, y = UMAP_2, nCount_RNA = nCount_RNA, nFeature_RNA = nFeature_RNA, col = nCount_RNA/nFeature_RNA, mt = percent.mt, seurat_clusters = seurat_clusters), cex=.3) + scale_color_viridis() + scale_y_reverse() + theme(legend.position = 'bottom')
+
+ggarrange(tmp_plot_1, tmp_plot_2, tmp_plot_3)
+```
+
+For cell-type identification we can use a DotPlot showing the expression levels of various known marker genes.
+The DotPlot below shows high similarity to the original Figure S5B (Ignoring the visual style):
+
+```{r}
+
+marker_genes <- c('NEUROD6', 'NEUROD2', 'BCL11A', 'HES1', 'TTYH1', 'SLC1A3', 'TYMS', 'MKI67', 'TOP2A', 'DLX6-AS1', 'DLX5', 'SCGN')
+DotPlot(seurat_object, features = marker_genes, scale = FALSE, dot.scale = 20) + theme(axis.text.x = element_text(angle = 45, hjust = 1)) + scale_color_viridis(trans = "log2")
+```
+
+
+We can also visualize the expression of the same genes in UMAP-space:
+
+```{r umap}
+FeaturePlot_but_good(seurat_object, features = marker_genes, point_size = .3, slot = 'data') + scale_y_reverse()
+```
+
+# Cell selection
+
+As for which cells to amplify; We defined a set of criteria:
+
+- Select cells in groups of 3 from the same neighborhood in PCA space (k-nearest neighbor with $k=3$)
+- Only consider neighborhoods for which all 3 cells are in the same cluster
+- Select cells with high and low number of reads
+- Select cells with high and low number of expressed genes
+
+To implement this we first run k-nearest neighbor clustering on the data-set and kick out neighborhoods that span two clusters. Next we rank genes by the number of reads, and the count to feature ratio CF to get the nCount_rank and the CF_rank.
+\begin{equation}
+CF = \frac{\text{Number of Reads}}{\text{Number of expressed Genes}}
+\end{equation}
+We use CF rather than the number of expressed genes because we are especially interested in cells with many reads but few expressed genes, and the other way around.
+
+We then iterate over all cells and look for the most diverse neighborhood per cluster.
+
+Here each cell is defined by it's nCount_rank and it's CF_rank. A neighborhood of 3 cells therefore induces a triangle in nCount_rank X CF_rank space. We define the most diverse neighborhood as the one for which the area of this triangle is maximal.
+
+We can then delete these cells from the table and repeat the procedure to get the second most diverse neighborhoods as well. This way we select 18 cells.
+
+We chose to do this on the ranks, rather than on the actual values to make nCounts and CF comparable.
+
+The selected cells are shown below:
+
+
+```{r select_cells}
+# Define neíghbourhoods
+seurat_object <- FindNeighbors(seurat_object, dims = 1:50, return.neighbor = T, k.param = 3)
+neighbourhood_info <- tibble(cell_1 = seurat_object@neighbors$RNA.nn@cell.names,
+                             cell_2 = cell_1[seurat_object@neighbors$RNA.nn@nn.idx[,2]],
+                             cell_3 = cell_1[seurat_object@neighbors$RNA.nn@nn.idx[,3]],
+                             current_neighbours = cbind(cell_1, cell_2, cell_3))
+# Score the neighbourhoods
+neighbourhood_scores <- seurat_object %>%
+  select(-c(orig.ident, PC_1:PC_50, umap_1, umap_2)) %>%
+  group_by(seurat_clusters) %>%
+  mutate(nFeature_Rank = rank(nFeature_RNA, ties.method = 'random'),
+         nCount_Rank = rank(nCount_RNA, ties.method = 'random'),
+         Count_Feature_ratio = nCount_RNA/nFeature_RNA,
+         CF_Rank = rank(Count_Feature_ratio, ties.method = 'random')) %>%
+  left_join(neighbourhood_info, by = c('.cell' = 'cell_1')) %>%
+  group_by(.cell) %>%
+  filter(seurat_clusters != 3)
+
+neighbourhood_scores <- filter_split_neighbours(neighbourhood_scores)
+neighbourhood_scores <- calc_dist_sum(neighbourhood_scores, dist_mode = 'triangle')
+neighbourhood_scores <- neighbourhood_scores %>%
+  arrange(desc(sum_of_dists)) %>%
+  group_by(seurat_clusters) %>%
+  mutate(is_top = NA) %>%
+  mutate(is_top = replace(is_top, row_number() == 1, 1))
+
+neighbour_info_to_join <- neighbourhood_scores %>%
+  select(-c(cell_2, cell_3, current_neighbours, is_top, sum_of_dists))
+
+# Select neighbourhoods
+top_cells <- neighbourhood_scores %>%
+  select(.cell, cell_2, cell_3, is_top, sum_of_dists, seurat_clusters) %>%
+  filter(is_top == 1) %>%
+  pivot_longer(cols = c(.cell, cell_2, cell_3), values_to = '.cell', names_to = NULL) %>%
+  left_join(neighbour_info_to_join) %>%
+  mutate(is_top = as_factor(is_top))  
+
+neighbourhood_scores_filtered <- neighbourhood_scores %>%
+  filter(!(.cell %in% top_cells$.cell | cell_2 %in% top_cells$.cell | cell_3 %in% top_cells$.cell)) %>%
+  mutate(is_top = replace(is_top, row_number() == 1, 2))
+
+top_cells_2 <- neighbourhood_scores_filtered %>%
+  select(.cell, cell_2, cell_3, is_top, sum_of_dists, seurat_clusters) %>%
+  filter(is_top == 2) %>%
+  pivot_longer(cols = c(.cell, cell_2, cell_3), values_to = '.cell', names_to = NULL) %>%
+  left_join(neighbour_info_to_join) %>%
+  mutate(is_top = as_factor(is_top))  
+
+top_1_2 <- rbind(top_cells, top_cells_2)
+
+#Visualize neighbourhoods
+umap_data <- tibble(UMAP_1 = Embeddings(seurat_object, reduction = 'umap')[,1], UMAP_2 = Embeddings(seurat_object, reduction = 'umap')[,2], .cell = colnames(seurat_object)) %>% left_join(neighbour_info_to_join) %>% left_join(top_1_2)
+
+count_plot <- ggplot() + geom_point(data = filter(umap_data, is.na(is_top)), aes(x = UMAP_1, y = UMAP_2, nCount_Rank = nCount_Rank, nFeature_Rank = nFeature_Rank, CF_Rank = CF_Rank, .cell = .cell, mt = percent.mt, seurat_clusters = seurat_clusters), col = 'darkgrey') + geom_point(data = filter(umap_data, !is.na(is_top)), aes(x = UMAP_1, y = UMAP_2, nCount_Rank = nCount_Rank, nFeature_Rank = nFeature_Rank, CF_Rank = CF_Rank, col = is_top, .cell = .cell, mt = percent.mt, seurat_clusters = seurat_clusters)) + scale_y_reverse()
+
+ggsave(paste0(folder,'selected_plot.png'), count_plot, width = 6.6, height = 4)
+
+count_plot
+
+tmp_tibble <- tibble(seurat_clusters = seurat_object$seurat_clusters, .cell = colnames(seurat_object)) %>% filter(seurat_clusters != 3) %>% right_join(neighbour_info_to_join) %>% left_join(top_1_2)
+spread_plot <- ggplot() + geom_point(data=filter(tmp_tibble, is.na(is_top)), aes(x = nCount_Rank, y = CF_Rank, col = is_top), alpha=1) + geom_point(data=subset(tmp_tibble,!is.na(is_top)), aes(x = nCount_Rank, y = CF_Rank, col = is_top), alpha=1) + geom_abline(slope=1) + facet_wrap(~seurat_clusters)
+
+ggsave(paste0(folder,'spread_plot.png'), spread_plot, width = 6.6, height = 4)
+```
+
+We can visualize the selected cells triplets in the CF_rank to nCount_Rank space in which they were selected:
+```{r select_cell_visualization}
+ggplot() + geom_point(data=filter(tmp_tibble, is.na(is_top)), aes(x = nCount_Rank, y = CF_Rank), col = 'darkgrey', alpha=1) + geom_point(data=subset(tmp_tibble,!is.na(is_top)), aes(x = nCount_Rank, y = CF_Rank, col = is_top), alpha=1) + geom_abline(slope=1) + facet_wrap(~seurat_clusters)
+
+ggplot() + geom_point(data=filter(tmp_tibble, is.na(is_top)), aes(x = nCount_RNA, y = Count_Feature_ratio), col = 'darkgrey', alpha=1) + geom_point(data=subset(tmp_tibble,!is.na(is_top)), aes(x = nCount_RNA, y = Count_Feature_ratio, col = is_top), alpha=1) + geom_abline(slope=1) + facet_wrap(~seurat_clusters)
+
+ggplot() + geom_point(data=filter(tmp_tibble, is.na(is_top)), aes(x = nCount_RNA, y = nFeature_RNA), col = 'darkgrey', alpha=1) + geom_point(data=subset(tmp_tibble,!is.na(is_top)), aes(x = nCount_RNA, y = nFeature_RNA, col = is_top), alpha=1) + geom_abline(slope=1) + facet_wrap(~seurat_clusters)
+```
+
+The resulting cells and their characteristics are:
+```{r select_cell_table}
+summary_data <- umap_data %>% filter(!is.na(is_top)) %>% select(c(.cell, seurat_clusters, is_top, nCount_RNA, nFeature_RNA, Count_Feature_ratio, percent.mt, sum_of_dists)) %>% arrange(seurat_clusters) %>% arrange(seurat_clusters, is_top)
+kable(summary_data, format ='html') %>% kable_styling()
+
+write_csv(summary_data, file = paste0(folder,'selected_cells.csv'))
+```
+
+# Hamming Distances
+
+To avoid any issues during PCR amplification we have to ensure that the primer sequences are not too similar.
+
+We can calculate the Hamming Distances between the selected Cell-barcodes to ensure we can design sufficiently different primers and also show them in a Heatmap:
+```{r barcodes}
+barcodes <- str_split_fixed( summary_data$`.cell`, pattern = '-', n = 2)[,1]
+
+write_csv(tibble(cell = 1:18, barcodes = barcodes), file = 'select_cells/barcodes.csv')
+
+hamming_dist <- function(x, y){
+  require(stringr)
+  x <- unlist(str_split(x, pattern = ''))
+  y <- unlist(str_split(y, pattern = ''))
+  tmp_dist <- sum(x != y)
+  return(tmp_dist)
+}
+
+
+barcode_info <- expand(tibble(barcode_1 = barcodes, barcode_2 = barcodes), barcode_1, barcode_2) %>% mutate(hamming_distance = map2_dbl(barcode_1, barcode_2, hamming_dist))
+hamming_distances <- barcode_info %>% filter(barcode_1 != barcode_2) 
+summary(hamming_distances$hamming_distance)
+
+ggplot(barcode_info) + geom_tile(aes(x = barcode_1, y = barcode_2, fill = hamming_distance)) + scale_fill_viridis() + geom_text(aes(x = barcode_1, y = barcode_2, label = hamming_distance)) + theme(axis.text.x = element_text(angle=90))
+```

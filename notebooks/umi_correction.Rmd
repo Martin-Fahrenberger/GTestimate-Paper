@@ -1,0 +1,215 @@
+---
+title: "UMI correction for cta-seq"
+output: 
+  html_document:
+    css: style.css
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width=10, fig.height=6)
+
+library(tidyverse)
+library(Seurat)
+library(igraph)
+library(tictoc)
+library(DescTools)
+library(multidplyr)
+
+source('functions/hamm_dist.R')
+source('functions/pw_hamm_dist.R')
+source('functions/dedup_string_list.R')
+source('functions/pw_adjacency.R')
+source('functions/rm_edges.R')
+source('functions/add_counts_to_vertices.R')
+```
+# Introduction
+
+During manual inspection of the raw reads from our cta-seq run 2 (the run after targeted amplification) we noticed issues with the UMI correction and counting in CellRanger.
+In this script we therefore implement the UMI-tools directional algorithm for scRNA-seq read data.
+
+Make sure you have run read_processing.sh or downloaded the deep_read_ids_xf_25_17_UR_GX_counted_sorted.txt for this script to work.
+
+# Preprocessing
+
+Before we get to the UMI correction for our cta-seq data we want to rebuild CellRanger's count-matrix from the possorted_bam to ensure reproducibility.
+
+The shell script "read_processing.sh" extracts the necessary information from the .bam file and already counts and sorts the reads. We can now load the data.
+
+```{r read}
+read_data_UR_GX <- read_delim('../data/deep_read_ids_xf_25_17_UR_GX_counted_sorted.txt',  delim = '\t', col_names = F)
+colnames(read_data_UR_GX) <- c('count', 'ensemble_id', 'cell', 'uncorrected_umi', 'umi')
+read_data_UR_GX <- read_data_UR_GX %>% mutate(rank = row_number(), count = as.numeric(count), ensemble_id = str_remove(ensemble_id, 'GX:Z:'), cell = str_remove(cell, 'CB:Z:'), uncorrected_umi = str_remove(uncorrected_umi, 'UR:Z:'), umi = str_remove(umi, 'UB:Z:'))
+```
+
+However since read deduplication in CellRanger happens at the Ensembl ID level, but count-matrix annotation ends up being gene-names we also have to build our own gene-id translation based on the features.tsv.gz
+```{r annotate}
+feature_annotation <- read_delim('../cta_seq_run2/outs/filtered_feature_bc_matrix/features.tsv.gz',  delim = '\t', col_names = F, col_select = c(1,2))
+colnames(feature_annotation) <- c('ensemble_id', 'gene')
+
+feature_annotation <- feature_annotation %>% filter(ensemble_id %in% read_data_UR_GX$ensemble_id)
+feature_annotation$gene <- dedup_string_list(feature_annotation$gene)
+
+read_data_UR_GX <- read_data_UR_GX %>% left_join(feature_annotation)
+```
+
+
+Lets focus on our amplified cells for the moment and count the unique UMIs after CellRangers UMI correction:
+```{r filter}
+my_cells <- paste0(read_csv('select_cells/barcodes.csv')$barcodes, '-1')
+
+CR_corrected <- read_data_UR_GX %>% filter(cell %in% my_cells) %>% select(cell, gene, umi) %>% arrange(cell, gene, umi) %>% distinct()
+CR_counted <- CR_corrected %>% group_by(cell, gene) %>% summarise(count = n())
+counts_25 <- CR_counted %>% pivot_wider(names_from = cell, values_from = count, values_fill = 0) %>% arrange(gene) %>% select(gene, all_of(my_cells))
+
+counts_25
+```
+
+This should then be identical to the count matrix CellRanger returned:
+```{r original_count_matrix}
+original_counts <- Read10X('../cta_seq_run2/outs/filtered_feature_bc_matrix/')[,my_cells] %>%
+  as.data.frame %>%
+  rownames_to_column() %>%
+  as_tibble %>%
+  rename(gene=rowname) %>%
+  filter(rowSums(select(., -gene)) != 0) %>%
+  arrange(gene) %>%
+  select(gene, all_of(my_cells))
+
+original_counts
+```
+
+And indeed all entries of our new count-matrix are identical
+
+```{r compare}
+all(counts_25 == original_counts)
+
+```
+
+Now that we have successfully rebuild the count-matrix from the possorted_bam we can improve the results by building a better UMI correction.
+
+# UMI correction
+
+To ensure the quality of our cta_seq data set we need to correct UMIs for sequencing errors.
+Cellranger does this by default, correcting UMIs with a Hamming distance of 1 towards the more common UMI on a per cell per gene level.
+However there are two issues with the default correction:
+
+First, it does not work as intended. When there are multiple errors in a sequenced UMI this can lead to a chain of errors e.g. AAA -> AAT -> ATT. This is not accounted for in CellRanger, which is OK, they never claimed that it is. However in this example if AAA was seen 10 times, AAT 5 times and ATT 1 time their algorithm would correct AAT -> AAA and ATT -> AAT, eventhough it had just concluded that AAT is not a valid UMI.
+
+We realized this because some times there are still UMI pairs with Hamming-distance 1 left in the data after correction.
+we have constructed an example here:
+
+```{r}
+example_UR_all <- read_data_UR_GX %>% select(cell, gene, umi) %>% distinct() %>% group_by(cell, gene) %>% summarize(umi_list = list(umi), count = n()) %>% arrange(desc(count))
+example_UR <- example_UR_all %>% filter(cell == 'GGCTTTCGTGTGTCGC-1', gene == 'ZC3H14')
+read_data_UR_GX %>% filter(cell == 'GGCTTTCGTGTGTCGC-1', gene == 'ZC3H14')
+
+pw_hamm_dist(example_UR$umi_list[[1]])
+```
+
+Second, a correction of only 1 Hamming distance is simply not enough for the large number of identical reads we have sequenced in our cta-seq experiment.
+To fix both of these issues we decided to use the directional UMI correction algorithm first described in the UMI-Tools paper.
+
+So lets build UMI-Tools Directional algorithm in R:
+
+```{r build_tbl}
+umi_tools_corrected <- read_data_UR_GX %>%
+  select(cell, gene, uncorrected_umi, count) %>%
+  filter(cell %in% my_cells) %>%
+  group_by(cell, gene) %>%
+  summarize(umi_list = list(uncorrected_umi), count_list = list(count)) %>%
+  mutate(umi_tbl = map2(umi_list, count_list, function(x, y) tibble(umi = x, count = y))) %>%
+  select(-c(umi_list, count_list))
+
+```
+
+We have implemented the necessary functions in pw_adjacency(), add_counts_to_vertices() and rm_edges() together with the igraph library we should have all the necessary tools.
+
+We can try them out on a small version of the real data set:
+
+```{r small}
+umi_tools_corrected_example <- umi_tools_corrected %>%
+  ungroup() %>%
+  sample_n(100) 
+
+umi_tools_corrected_example <- umi_tools_corrected_example %>%
+  mutate(umi_adj = map(umi_tbl, pw_adjacency)) %>%
+  mutate(umi_graph = map(umi_adj, graph_from_adjacency_matrix)) %>%
+  mutate(umi_graph = map2(umi_graph, umi_tbl, add_counts_to_vertices)) %>%
+  mutate(umi_clusters = map_int(umi_graph, function(x) clusters(x)$no)) %>%
+  mutate(old_graph = umi_graph)
+
+umi_tools_corrected_example <- umi_tools_corrected_example %>%
+  mutate(umi_graph = map(umi_graph, rm_edges)) %>%
+  mutate(umi_count = map_int(umi_graph, function(x) clusters(x)$no))
+```
+
+For larger dataset this takes quite a long time, which is probably why UMI-tools is not written in R.
+However for this one data-set the runtime was OK.
+
+If you want to repeat the full deduplication this might take a while, to speed it up it is parallelysed.
+Here we have disabled this chunk and would instead advise you to use the provided 'umi_tools_corrected.RDS'
+
+```{r real_world, eval = FALSE}
+
+tic()
+cluster <- new_cluster(48)
+
+cluster_copy(cluster, c('pw_adjacency', 'graph_from_adjacency_matrix', 'add_counts_to_vertices', 'rm_edges', 'hamm_dist'))  
+
+umi_tools_corrected <- umi_tools_corrected %>% ungroup() %>% partition(cluster)
+
+umi_tools_corrected <- umi_tools_corrected %>%
+  mutate(umi_adj = purrr::map(umi_tbl, pw_adjacency)) %>%
+  mutate(umi_graph = purrr::map(umi_adj, graph_from_adjacency_matrix)) %>%
+  mutate(umi_graph = purrr::map2(umi_graph, umi_tbl, add_counts_to_vertices)) %>%
+  mutate(umi_graph = purrr::map(umi_graph, rm_edges)) %>%
+  mutate(umi_count = purrr::map_int(umi_graph, function(x) clusters(x)$no)) %>%
+  select(cell,gene,umi_count)
+
+umi_tools_corrected <- umi_tools_corrected %>% collect()
+rm(cluster)
+toc()
+
+saveRDS(umi_tools_corrected, file = 'umi_tools_corrected.RDS')
+
+
+```
+
+Let's turn this into the count matrix and look what changed:
+
+```{r count_matrix}
+umi_tools_corrected <- readRDS('../data/umi_tools_corrected.RDS')
+
+umi_tools_cm <- umi_tools_corrected %>%
+  pivot_wider(names_from = cell, values_from = umi_count, values_fill = 0) %>%
+  arrange(gene) %>%
+  select(gene, all_of(my_cells))
+```
+
+Which proportion of all entries in the count-matrix changed?
+
+```{r differences_all}
+ut_equal <- sum(umi_tools_cm== original_counts)
+ut_unequal <- sum(umi_tools_cm != original_counts)
+
+ut_unequal/(ut_equal + ut_unequal)
+```
+
+Which proportion of entries changed when we only consider those that are not zero in either matrix?
+
+```{r differences_not_zero}
+umi_tools_tmp <- umi_tools_cm %>% select(-gene)
+original_counts_tmp <- original_counts %>% select(-gene)
+is_present <- umi_tools_tmp != 0 & original_counts_tmp !=0
+
+ut_equal_present <- sum(umi_tools_tmp[is_present] == original_counts_tmp[is_present])
+ut_unequal_present <- sum(umi_tools_tmp[is_present] != original_counts_tmp[is_present])
+
+ut_unequal_present/(ut_equal_present + ut_unequal_present)
+```
+
+The changes are quite significant, so we will save this and use it for the rest of the analysis:
+
+```{r save_counts}
+saveRDS(umi_tools_cm, file = 'umi_tools_corrected_deep_counts.RDS')
+```
