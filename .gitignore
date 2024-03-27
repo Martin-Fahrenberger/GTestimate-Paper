@@ -12,7 +12,6 @@ notebooks/read_count_overview/**
 notebooks/toy_example/**
 notebooks/spatial_transcriptomics/**
 notebooks/cta_seq/**
-notebooks/pub_figures/**
 data/**
 cta_seq/**
 cta_seq_run2/**
