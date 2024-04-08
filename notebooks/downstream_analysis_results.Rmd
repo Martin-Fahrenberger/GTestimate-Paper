@@ -182,20 +182,6 @@ saveRDS(file = str_glue('{folder}lyz_scatter_pbmc.Rds'), lyz_scatter_pbmc)
 
 
 ```
-
-The GTestimate function also saves  the estimated amount of missing-mass per cell in a meta data vector of the Seurat object. We can visualize this as a histogram:
-
-```{r}
-mm_tbl <- tibble(`Missing Mass` = pbmc_seurat_GT$missing_mass)
-mm_hist <- ggplot(mm_tbl) + geom_histogram(aes(x = `Missing Mass`), bins = 30, fill = "#3182BD", color = 'white') + theme_classic()
-
-mm_hist
-
-ggsave(filename = str_glue('{folder}mm_hist.pdf'), mm_hist, width = 3.4, height = 3)
-saveRDS(file = str_glue('{folder}mm_hist.Rds'), mm_hist)
-
-```
-
 # Developing Pancreas
 Since the pbmc3k data-set has pretty well defined cell-types we will next analyse a data-set with more continuous cell-type changes.
 For this we chose the popular pancreas development data-set endocrinogenesis_day15, which is often used as an example in RNA-velocity approaches.

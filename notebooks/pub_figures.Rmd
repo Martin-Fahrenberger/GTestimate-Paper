@@ -32,13 +32,28 @@ read_count_hist <- read_count_hist +
         title = element_text(size = font_title)) + 
   ylab('Cells') +
   xlab('UMIs/cell') +
-  ggtitle('UMI count per Cell, pbmc3k') +
-  scale_x_continuous(labels=trans_format(trans = 'identity', math_format(phantom()^phantom(8)*.x^phantom(8))), limits = c(0, 7000)) +
-  scale_y_continuous(breaks = c(0,100,200,300))
+  ggtitle('UMI count per Cell, cta-seq') +
+  scale_x_continuous(labels=trans_format(trans = 'identity', math_format(phantom()^phantom(8)*.x^phantom(8))), limits = c(0, 25000))
 
 read_count_hist
 ggsave(str_glue('{folder}read_count_hist.pdf'), read_count_hist, width = 60, height = 40, units = 'mm')
 ```
+
+
+```{r mm_hist}
+mm_hist <- readRDS(file = 'read_count_overview/mm_hist.Rds')
+mm_hist <- mm_hist +
+  theme_classic() +
+  theme(axis.title = element_text(size = font_axis),
+        axis.text = element_text(size = font_tick)) + 
+  ylab('Cells') + 
+  xlab('Missing mass')
+
+mm_hist
+ggsave(str_glue('{folder}mm_hist.pdf'), mm_hist, width = 3.24, height = 2)
+```
+
+
 
 ```{r toy}
 toy_example_plot <- readRDS('toy_example/example_plot.Rds')
@@ -401,20 +416,6 @@ nkg7_plot <- nkg7_plot +
 nkg7_plot
 ggsave(str_glue('{folder}nkg7_plot.pdf'), nkg7_plot, width = 50, height = 55.8, units = 'mm')
 ```
-
-```{r pbmc_mm}
-mm_hist <- readRDS(file = 'downstream_analysis_results/mm_hist.Rds')
-mm_hist <- mm_hist +
-  theme_classic() +
-  theme(axis.title = element_text(size = font_axis),
-        axis.text = element_text(size = font_tick)) + 
-  ylab('Cells') + 
-  xlab('Missing mass')
-
-mm_hist
-ggsave(str_glue('{folder}mm_hist.pdf'), mm_hist, width = 3.24, height = 2)
-```
-
 
 ```{r spatial_clustering}
 spatial_clustering <- readRDS(file = 'spatial_transcriptomics/st_clustering_plots.Rds')

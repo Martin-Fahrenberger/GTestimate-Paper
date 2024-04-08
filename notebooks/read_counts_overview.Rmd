@@ -12,21 +12,22 @@ This script produces a simple histogram of the number of UMIs per cell in an exa
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width=10, fig.height=6)
 library(Seurat)
 library(tidyverse)
-library(TENxPBMCData)
+library(GTestimate)
 
 folder <- 'read_count_overview/'
 dir.create(folder)
 ```
-# pbmc3k
-To show the high variance in the number of observed UMIs per cell in a typical 10X experiment we will use the popular 10X pbmc3k data-set.
+
+# cta_seq run 1
+To show the high variance in the number of observed UMIs per cell in a 10X experiment we used our cta-seq run 1 as an example of a high quality scRNA-seq library.
 
 The histogram below shows the UMIs/cell, they span roughly one order of magnitude.
 
 ```{r make_plot}
-pbmc3k <- TENxPBMCData(dataset = "pbmc3k")
+cta_seq_data <- Read10X('../cta_seq/outs/filtered_feature_bc_matrix/')
 
-read_count_data <- tibble(`UMIs/cell` = colSums(assay(pbmc3k)))
-read_count_plot <- ggplot(read_count_data) + geom_histogram(aes(x = `UMIs/cell`), bins = 30, fill = "#3182BD", color = 'white') + scale_x_continuous(limits = c(0,7000)) + theme_classic()
+read_count_data <- tibble(`UMIs/cell` = colSums(cta_seq_data))
+read_count_plot <- ggplot(read_count_data) + geom_histogram(aes(x = `UMIs/cell`), bins = 30, fill = "#3182BD", color = 'white') + scale_x_continuous(limits = c(0,25000)) + theme_classic()
 
 read_count_plot
 
@@ -34,4 +35,19 @@ ggsave(str_glue('{folder}read_count_plot.pdf'), read_count_plot, width = 6.6, he
 saveRDS(file = str_glue('{folder}read_count_plot.Rds'), read_count_plot)
 
 ```
+
+The GTestimate function also savesthe estimated amount of missing-mass per cell in a meta data vector of the Seurat object. We can visualize this as a histogram:
+
+```{r mm_plot}
+mm_tbl <- tibble(`Missing mass` = GTestimate(CreateSeuratObject(cta_seq_data))$missing_mass)
+
+mm_hist <- ggplot(mm_tbl) + geom_histogram(aes(x = `Missing mass`), bins = 30, fill = "#3182BD", color = 'white') + theme_classic()
+
+mm_hist
+
+ggsave(filename = str_glue('{folder}mm_hist.pdf'), mm_hist, width = 3.4, height = 3)
+saveRDS(file = str_glue('{folder}mm_hist.Rds'), mm_hist)
+
+```
+
 

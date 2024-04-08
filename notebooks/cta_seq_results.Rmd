@@ -188,6 +188,15 @@ absolute_plot <- ggplot(estimation_error_tbl %>% filter(metric == 'absolute')) +
 ggsave(str_glue('{folder}re_estimation/absolute_plot.pdf'), absolute_plot, width = 6.6, height = 4)
 saveRDS(file = str_glue('{folder}re_estimation/absolute_plot.Rds'), absolute_plot)
 absolute_plot
+
+
+abs_improvement_tbl <- estimation_error_tbl %>%
+  filter(metric == 'absolute') %>%
+  pivot_wider(names_from = Method, values_from = Error) %>%
+  mutate(Improvement = (ML-GT)/ML*100)
+abs_improvement_tbl
+
+abs_improvement_tbl %>% summarise(`Average Improvement` = mean(Improvement))
 ```
 
 we can also visualize for which genes we make the highest errors:
