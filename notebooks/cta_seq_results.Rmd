@@ -81,6 +81,8 @@ count_summary_tbl <- count_summary_tbl %>%
   mutate(cells = factor(cells, levels = my_cells), Dataset = factor(Dataset, levels = c('ultra-deep', 'typical'))) %>%
   mutate(cell_barcodes = cells, cells = factor(as.numeric(cells), levels = 1:18))
 
+count_summary_tbl %>% group_by(Dataset) %>% summarise(mean_umis = mean(`#reads`))
+
 count_plot <- ggplot(count_summary_tbl) +
   geom_line(aes(x = cells, y = `#reads`, linetype = Dataset, group = Dataset)) +
   geom_point(aes(x = cells, y = `#reads`), size = .7) +
