@@ -24,7 +24,7 @@ source('functions/gg_color_hue.R')
 
 This script loads .Rds files produce during data-analysis and applys the final touches to produce all figures for the publication:
 
-```{r hist}
+```{r umi_hist}
 read_count_hist <- readRDS('read_count_overview/read_count_plot.Rds')
 read_count_hist <- read_count_hist +
   theme(axis.title = element_text(size = font_axis),
@@ -37,6 +37,21 @@ read_count_hist <- read_count_hist +
 
 read_count_hist
 ggsave(str_glue('{folder}read_count_hist.pdf'), read_count_hist, width = 60, height = 40, units = 'mm')
+```
+
+
+```{r gene_hist}
+gene_count_hist <- readRDS('read_count_overview/gene_count_plot.Rds')
+gene_count_hist <- gene_count_hist +
+  theme(axis.title = element_text(size = font_axis),
+        axis.text = element_text(size = font_tick),
+        title = element_text(size = font_title)) + 
+  ylab('Cells') +
+  xlab('Genes/cell') +
+  ggtitle('Expressed Genes per Cell, cta-seq')
+
+gene_count_hist
+ggsave(str_glue('{folder}gene_count_hist.pdf'), gene_count_hist, width = 3.24, height = 2)
 ```
 
 

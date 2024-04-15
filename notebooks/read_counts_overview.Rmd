@@ -26,13 +26,20 @@ The histogram below shows the UMIs/cell, they span roughly one order of magnitud
 ```{r make_plot}
 cta_seq_data <- Read10X('../cta_seq/outs/filtered_feature_bc_matrix/')
 
-read_count_data <- tibble(`UMIs/cell` = colSums(cta_seq_data))
+read_count_data <- tibble(`UMIs/cell` = colSums(cta_seq_data), `genes/cell` = colSums(cta_seq_data != 0))
 read_count_plot <- ggplot(read_count_data) + geom_histogram(aes(x = `UMIs/cell`), bins = 30, fill = "#3182BD", color = 'white') + scale_x_continuous(limits = c(0,25000)) + theme_classic()
 
 read_count_plot
 
 ggsave(str_glue('{folder}read_count_plot.pdf'), read_count_plot, width = 6.6, height = 4)
 saveRDS(file = str_glue('{folder}read_count_plot.Rds'), read_count_plot)
+
+gene_count_plot <- ggplot(read_count_data) + geom_histogram(aes(x = `genes/cell`), bins = 30, fill = "#3182BD", color = 'white') + theme_classic()
+
+gene_count_plot
+
+ggsave(str_glue('{folder}gene_count_plot.pdf'), gene_count_plot, width = 6.6, height = 4)
+saveRDS(file = str_glue('{folder}gene_count_plot.Rds'), gene_count_plot)
 
 ```
 
