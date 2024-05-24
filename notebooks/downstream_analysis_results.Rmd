@@ -124,8 +124,7 @@ precent_change_ident <- sum(umap_combined_differences$`changed cluster`)/length(
 To show how the normalized expression of individual genes changed we can visualize the expression of some celltype specific genes in the different clusters.
 
 ```{r}
-#marker_genes <- c("MS4A1", "GNLY", "CD3E", "CD14", "FCER1A", "FCGR3A", "LYZ", "PPBP", "CD8A", "CD79A","NKG7", "PF4")
-marker_genes <- c("IL7R", "CCR7", "CD14", "LYZ", "S100A4", "MS4A1", "CD8A", "FCGR3A", "MS4A7", "GNLY", "NKG7", "FCER1A", "CST3", "PPBP")
+marker_genes <- c("MS4A1", "CD79A", "PF4", "GNLY", "CD3E", "CD14", "FCER1A", "FCGR3A", "LYZ", "PPBP", "CD8A", "IL7R", "CCR7", "S100A4", "MS4A7", "CST3", "NKG7")
 
 marker_tbl_ML <- GetAssayData(pbmc_seurat_ML, assay = 'RNA', slot = 'data')[marker_genes,] %>%
   as.matrix() %>%
@@ -151,7 +150,16 @@ marker_tbl_GT <- GetAssayData(pbmc_seurat_GT, assay = 'GTestimate', slot = 'data
 
 marker_tbl_combined <- rbind(marker_tbl_ML, marker_tbl_GT) %>% mutate(Method = factor(Method, levels = c('NormalizeData', 'GTestimate')))
 
-ggplot(marker_tbl_combined) + geom_boxplot(aes(x = Celltype, y = Expression, fill = Method)) + facet_wrap(~Gene) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+marker_tbl_combined_2 <- marker_tbl_combined %>%
+  mutate(Gene = factor(Gene, levels = marker_genes)) %>%
+  filter(Gene != 'NKG7')
+  
+
+more_markers_plot <- ggplot(marker_tbl_combined_2) + geom_boxplot(aes(x = Celltype, y = Expression, fill = Method), outlier.size = .3, outlier.stroke = .3, linewidth = .3) + facet_wrap(~Gene) + theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), axis.title.x = element_blank())
+
+more_markers_plot
+ggsave(filename = str_glue('{folder}more_markers_plot.png'), more_markers_plot, width = 4, height = 2)
+saveRDS(file = str_glue('{folder}more_markers_plot.Rds'), more_markers_plot)
 
 nkg7_plot <- ggplot(marker_tbl_combined %>% filter(Gene == 'NKG7')) +
   geom_boxplot(aes(x = Celltype, y = Expression, fill = Method), outlier.size = .3, outlier.stroke = .3, linewidth = .3) +
@@ -218,6 +226,8 @@ pancreas_seurat_GT <- pancreas_seurat %>%
   FindNeighbors(dims = 1:50) %>%
   FindClusters(resolution = 0.4) %>%
   RunUMAP(dims = 1:50)
+
+DimPlot(pancreas_seurat_ML) + DimPlot(pancreas_seurat_GT, reduction = 'umap')
 
 ```
 
@@ -328,6 +338,8 @@ saveRDS(file = str_glue('{folder}pancreas_umap_GT_same_clusters.Rds'), pancreas_
 ggsave(filename = str_glue('{folder}pancreas_umap_same_clusters.png'), pancreas_umap_same_clusters, width = 3.4, height = 3)
 saveRDS(file = str_glue('{folder}pancreas_umap_same_clusters.Rds'), pancreas_umap_same_clusters)
 
+pancreas_umap_same_clusters
+
 pancreas_alluvial <- pancreas_umap_combined %>% 
   select(Cell, Method, Cluster) %>%
   pivot_wider(values_from = Cluster, names_from = Method) %>%
@@ -346,6 +358,7 @@ cluster_flow_plot <- ggplot(pancreas_alluvial) +
   geom_label(stat = "stratum", aes(x = Method, stratum = Cluster, alluvium = group, y = `#Cells`, label = Cluster, fill = Cluster), label.padding = unit(0.05, "cm"), size = 6/.pt) +
   theme(legend.position = 'none') +
   ggtitle('Cluster Identity')
+
 cluster_flow_plot
 ggsave(filename = str_glue('{folder}cluster_flow_plot.png'), cluster_flow_plot, width = 3.4, height = 3)
 saveRDS(file = str_glue('{folder}cluster_flow_plot.Rds'), cluster_flow_plot)

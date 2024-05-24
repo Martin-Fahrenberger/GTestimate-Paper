@@ -152,7 +152,7 @@ read_summary_plot
 
 ```
 
-# Relative expression estimation error
+# Relative gene expression estimation error
 Next we will take a look at the errors made during relative expression estimation for both the GT and ML estimators:
 
 ```{r estimation_errors}
@@ -199,6 +199,12 @@ abs_improvement_tbl <- estimation_error_tbl %>%
 abs_improvement_tbl
 
 abs_improvement_tbl %>% summarise(`Average Improvement` = mean(Improvement))
+
+cell_sizes <- read_summary_tbl %>%
+  filter(Dataset == 'typical') %>%
+  select(cell_barcodes, `raw read count`) %>%
+  mutate(cell_barcodes = str_remove(cell_barcodes, pattern = '-1'))
+
 ```
 
 we can also visualize for which genes we make the highest errors:

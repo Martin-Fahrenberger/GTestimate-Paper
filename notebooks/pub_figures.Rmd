@@ -47,8 +47,7 @@ gene_count_hist <- gene_count_hist +
         axis.text = element_text(size = font_tick),
         title = element_text(size = font_title)) + 
   ylab('Cells') +
-  xlab('Genes/cell') +
-  ggtitle('Expressed Genes per Cell, cta-seq')
+  xlab('Genes/cell')
 
 gene_count_hist
 ggsave(str_glue('{folder}gene_count_hist.pdf'), gene_count_hist, width = 3.24, height = 2)
@@ -200,6 +199,7 @@ re_errors_absolute_down
 ggsave(str_glue('{folder}re_errors_absolute_down.pdf'), re_errors_absolute_down, width = 60, height = 40, units = 'mm')
 
 ```
+
 ```{r downsampling_dists}
 same_dist <- readRDS('downsampling_results/euclidean_same_dist_plot.Rds')
 same_dist <- same_dist +
@@ -431,6 +431,31 @@ nkg7_plot <- nkg7_plot +
 nkg7_plot
 ggsave(str_glue('{folder}nkg7_plot.pdf'), nkg7_plot, width = 50, height = 55.8, units = 'mm')
 ```
+
+```{r pbmc_more_markers}
+more_markers_plot <- readRDS(file = 'downstream_analysis_results/more_markers_plot.Rds')
+more_markers_plot <- more_markers_plot +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5),
+        legend.position = 'bottom',
+        title = element_text(size = font_title),
+        strip.text = element_text(size = font_title),
+        axis.title.x = element_text(size = font_axis),
+        axis.text = element_text(size = font_tick),
+        legend.text = element_text(size = font_axis),
+        legend.margin = margin(0,0,0,0),
+        legend.key.size = legend_key_size*0.7,
+        legend.title = element_blank(),
+        legend.box.spacing = unit(0, 'cm'),
+        panel.grid.major = element_line(color = "grey85", linewidth = 0.5)) +
+  ylab('Log-normalized expression') +
+  xlab(element_blank())
+
+more_markers_plot
+ggsave(str_glue('{folder}more_markers_plot.pdf'), more_markers_plot, width = 6.6, height = 6.6)
+```
+
+
 
 ```{r spatial_clustering}
 spatial_clustering <- readRDS(file = 'spatial_transcriptomics/st_clustering_plots.Rds')

@@ -38,6 +38,9 @@ First, we shortly analyse the resulting data with a standard pipeline to check i
 
 ```{r load_data}
 sc_data <- Read10X(data.dir = '../cta_seq/outs/filtered_feature_bc_matrix/')
+
+write.csv2(sc_data, file = '../data/cta_seq_typical.csv')
+
 seurat_object <- CreateSeuratObject(sc_data, project = 'cta_seq_data', min.cells = 100, min.features = 0)
 ```
 

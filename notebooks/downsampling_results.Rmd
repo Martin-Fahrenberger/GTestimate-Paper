@@ -85,36 +85,34 @@ Now we can summarize the results for the estimation error and make some plots:
 ```{r summarize_error}
 re_error_tbl_mean <- re_error_tbl %>%
   group_by(error_type, Method, size) %>%
-  summarize(mean_error = mean(Error), sd = sd(Error)) %>% 
-  #mutate(conv_margin = qt(0.975, df = n() - 1) * sd/sqrt(n())) %>%
-  mutate(conv_margin = qt(0.975, df = n() - 1) * sd) %>%
-  mutate(conv_lower = mean_error - conv_margin, conv_upper = mean_error + conv_margin) %>%
+  summarize(mean_error = mean(Error), sd = sd(Error), range_lower = quantile(Error, probs = 0.05), range_higher = quantile(Error, probs = 0.95)) %>%
   mutate(Method = factor(Method, levels = c('ML', 'GT')))
   
+
 combined_error_plot <- ggplot(re_error_tbl_mean) +
   geom_line(aes(x = size, y = mean_error, col = Method)) +
-  geom_ribbon(aes(x = size, ymin = conv_lower, ymax = conv_upper, fill = Method), alpha = 0.3) + 
+  geom_ribbon(aes(x = size, ymin = range_lower, ymax = range_higher, fill = Method), alpha = 0.3) + 
   facet_wrap(~error_type, scales = 'free') + 
   scale_x_continuous(trans = 'log10') + 
   ylab('Mean Estimation Error') +
   xlab('#Reads')
 
-max_abs <- re_error_tbl_mean %>% filter(error_type == 'absolute') %>% pluck('conv_upper') %>% max
+max_abs <- re_error_tbl_mean %>% filter(error_type == 'absolute') %>% pluck('range_higher') %>% max
 
 abs_error_plot <- ggplot(re_error_tbl_mean %>% filter(error_type == 'absolute')) +
   geom_line(aes(x = size, y = mean_error, col = Method)) +
-  geom_ribbon(aes(x = size, ymin = conv_lower, ymax = conv_upper, fill = Method), alpha = 0.3) + 
+  geom_ribbon(aes(x = size, ymin = range_lower, ymax = range_higher, fill = Method), alpha = 0.3) + 
   scale_x_continuous(trans = 'log10') + 
   scale_y_continuous(limits = c(0, max_abs)) + 
   ylab('Mean Error') +
   xlab('#Reads') +
   ggtitle('Absolute Error')
 
-max_sq <- re_error_tbl_mean %>% filter(error_type == 'squared') %>% pluck('conv_upper') %>% max
+max_sq <- re_error_tbl_mean %>% filter(error_type == 'squared') %>% pluck('range_higher') %>% max
 
 sq_error_plot <- ggplot(re_error_tbl_mean %>% filter(error_type == 'squared')) +
   geom_line(aes(x = size, y = mean_error, col = Method)) +
-  geom_ribbon(aes(x = size, ymin = conv_lower, ymax = conv_upper, fill = Method), alpha = 0.3) + 
+  geom_ribbon(aes(x = size, ymin = range_lower, ymax = range_higher, fill = Method), alpha = 0.3) + 
   scale_x_continuous(trans = 'log10') + 
   scale_y_continuous(limits = c(0, max_sq)) + 
   ylab('Mean Error') +
@@ -207,32 +205,26 @@ we can plot the results distances at various UMIs/cell for the same cell twice:
 re_dists_tbl_same_mean <- re_dists_tbl %>%
   filter(comparisson == 'same') %>%
   group_by(Metric, Method, size) %>%
-  summarize(mean_distance = mean(Distance), sd = sd(Distance)) %>% 
-  #mutate(conv_margin = qt(0.975, df = n() - 1) * sd/sqrt(n())) %>%
-  mutate(conv_margin = qt(0.975, df = n() - 1) * sd) %>%
-  mutate(conv_lower = mean_distance - conv_margin, conv_upper = mean_distance + conv_margin) %>%
+  summarize(mean_distance = mean(Distance), sd = sd(Distance), range_lower = quantile(Distance, probs = 0.05), range_higher = quantile(Distance, probs = 0.95)) %>% 
   mutate(Method = factor(Method, levels = c('ML', 'GT')))
 
 re_dists_tbl_different_mean <- re_dists_tbl %>%
   filter(comparisson == 'different') %>%
   group_by(Metric, Method, size) %>%
-  summarize(mean_distance = mean(Distance), sd = sd(Distance)) %>% 
-  #mutate(conv_margin = qt(0.975, df = n() - 1) * sd/sqrt(n())) %>%
-  mutate(conv_margin = qt(0.975, df = n() - 1) * sd) %>%
-  mutate(conv_lower = mean_distance - conv_margin, conv_upper = mean_distance + conv_margin) %>%
+  summarize(mean_distance = mean(Distance), sd = sd(Distance), range_lower = quantile(Distance, probs = 0.05), range_higher = quantile(Distance, probs = 0.95)) %>% 
   mutate(Method = factor(Method, levels = c('ML', 'GT')))
 
-max_euclidean_diff <- re_dists_tbl_different_mean %>% filter(Metric == 'Euclidean') %>% pluck('conv_upper') %>% max
-max_euclidean_same <- re_dists_tbl_same_mean %>% filter(Metric == 'Euclidean') %>% pluck('conv_upper') %>% max
+max_euclidean_diff <- re_dists_tbl_different_mean %>% filter(Metric == 'Euclidean') %>% pluck('range_higher') %>% max
+max_euclidean_same <- re_dists_tbl_same_mean %>% filter(Metric == 'Euclidean') %>% pluck('range_higher') %>% max
 max_euclidean <- max(max_euclidean_diff, max_euclidean_same)
 
-max_manhattan_diff <- re_dists_tbl_different_mean %>% filter(Metric == 'Manhattan') %>% pluck('conv_upper') %>% max
-max_manhattan_same <- re_dists_tbl_same_mean %>% filter(Metric == 'Manhattan') %>% pluck('conv_upper') %>% max
+max_manhattan_diff <- re_dists_tbl_different_mean %>% filter(Metric == 'Manhattan') %>% pluck('range_higher') %>% max
+max_manhattan_same <- re_dists_tbl_same_mean %>% filter(Metric == 'Manhattan') %>% pluck('range_higher') %>% max
 max_manhattan <- max(max_manhattan_diff, max_manhattan_same)
 
 combined_same_dist_plot <- ggplot(re_dists_tbl_same_mean) +
   geom_line(aes(x = size, y = mean_distance, col = Method)) +
-  geom_ribbon(aes(x = size, ymin = conv_lower, ymax = conv_upper, fill = Method), alpha = 0.3) + 
+  geom_ribbon(aes(x = size, ymin = range_lower, ymax = range_higher, fill = Method), alpha = 0.3) + 
   facet_wrap(~Metric, scales = 'free') +
   geom_hline(yintercept = 0) + 
   scale_x_continuous(trans = 'log10') +
@@ -241,7 +233,7 @@ combined_same_dist_plot <- ggplot(re_dists_tbl_same_mean) +
 
 manhattan_same_dist_plot <- ggplot(re_dists_tbl_same_mean %>% filter(Metric == 'Manhattan')) +
   geom_line(aes(x = size, y = mean_distance, col = Method)) +
-  geom_ribbon(aes(x = size, ymin = conv_lower, ymax = conv_upper, fill = Method), alpha = 0.3) +
+  geom_ribbon(aes(x = size, ymin = range_lower, ymax = range_higher, fill = Method), alpha = 0.3) +
   geom_hline(yintercept = 0) + 
   scale_x_continuous(trans = 'log10') +
   xlab('#Reads') +
@@ -251,7 +243,7 @@ manhattan_same_dist_plot <- ggplot(re_dists_tbl_same_mean %>% filter(Metric == '
 
 euclidean_same_dist_plot <- ggplot(re_dists_tbl_same_mean %>% filter(Metric == 'Euclidean')) +
   geom_line(aes(x = size, y = mean_distance, col = Method)) +
-  geom_ribbon(aes(x = size, ymin = conv_lower, ymax = conv_upper, fill = Method), alpha = 0.3) +
+  geom_ribbon(aes(x = size, ymin = range_lower, ymax = range_higher, fill = Method), alpha = 0.3) +
   geom_hline(data = tibble(distance = 0), aes(yintercept = distance, linetype = 'ground truth')) + 
   scale_x_continuous(trans = 'log10') +
   xlab('#Reads') +
@@ -279,7 +271,7 @@ real_euclidean_dist <- sqrt(sum((deepest_cell$ground_truth - second_deepest_cell
 
 combined_different_dist_plot <- ggplot(re_dists_tbl_different_mean) +
   geom_line(aes(x = size, y = mean_distance, col = Method)) +
-  geom_ribbon(aes(x = size, ymin = conv_lower, ymax = conv_upper, fill = Method), alpha = 0.3) + 
+  geom_ribbon(aes(x = size, ymin = range_lower, ymax = range_higher, fill = Method), alpha = 0.3) + 
   facet_wrap(~Metric, scales = 'free') +
   scale_x_continuous(trans = 'log10') +
   xlab('#Reads') +
@@ -287,7 +279,7 @@ combined_different_dist_plot <- ggplot(re_dists_tbl_different_mean) +
 
 manhattan_different_dist_plot <- ggplot(re_dists_tbl_different_mean %>% filter(Metric == 'Manhattan')) +
   geom_line(aes(x = size, y = mean_distance, col = Method)) +
-  geom_ribbon(aes(x = size, ymin = conv_lower, ymax = conv_upper, fill = Method), alpha = 0.3) +
+  geom_ribbon(aes(x = size, ymin = range_lower, ymax = range_higher, fill = Method), alpha = 0.3) +
   geom_hline(yintercept = real_manhattan_dist) +
   scale_y_continuous(limits = c(0, max_manhattan)) +
   scale_x_continuous(trans = 'log10') +
@@ -297,7 +289,7 @@ manhattan_different_dist_plot <- ggplot(re_dists_tbl_different_mean %>% filter(M
 
 euclidean_different_dist_plot <- ggplot(re_dists_tbl_different_mean %>% filter(Metric == 'Euclidean')) +
   geom_line(aes(x = size, y = mean_distance, col = Method)) +
-  geom_ribbon(aes(x = size, ymin = conv_lower, ymax = conv_upper, fill = Method), alpha = 0.3) +
+  geom_ribbon(aes(x = size, ymin = range_lower, ymax = range_higher, fill = Method), alpha = 0.3) +
   geom_hline(data = tibble(distance = real_euclidean_dist), aes(yintercept = distance, linetype = 'ground truth')) +
   scale_y_continuous(limits = c(0, max_euclidean)) +
   scale_x_continuous(trans = 'log10') +
