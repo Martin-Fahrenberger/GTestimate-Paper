@@ -387,7 +387,9 @@ for(i in rownames(umi_tools_dgC)){
   umi_tools_dgC_large[i,] &lt;- umi_tools_dgC[i,]
 }
 
-data_tbl$raw_counts[[2]] &lt;- umi_tools_dgC_large</code></pre>
+data_tbl$raw_counts[[2]] &lt;- umi_tools_dgC_large
+
+write.csv2(umi_tools_dgC_large, file = &#39;../data/cta_seq_ultra_deep.csv&#39;)</code></pre>
 <p>Next we calculate the relative expression for both the typical and
 the ultra-deep data-set. Using both the GT and ML estimator.</p>
 <pre class="r"><code>data_tbl &lt;- data_tbl %&gt;%

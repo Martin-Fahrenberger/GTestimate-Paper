@@ -52,6 +52,7 @@ for(i in rownames(umi_tools_dgC)){
 
 data_tbl$raw_counts[[2]] <- umi_tools_dgC_large
 
+write.csv2(umi_tools_dgC_large, file = '../data/cta_seq_ultra_deep.csv')
 ```
 
 Next we calculate the relative expression for both the typical and the ultra-deep data-set. Using both the GT and ML estimator.
