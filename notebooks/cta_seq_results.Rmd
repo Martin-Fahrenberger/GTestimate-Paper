@@ -67,7 +67,6 @@ data_tbl <- data_tbl %>%
 We can quickly summarize the data here:
 
 ```{r simple_summary}
-
 dir.create(str_glue('{folder}summary/'))
 count_summary_tbl <- data_tbl %>%
   mutate(`#reads` = map2(raw_counts, cells, function(x, y) tibble(`#reads` = colSums(x)[y])),
@@ -78,35 +77,44 @@ count_summary_tbl <- data_tbl %>%
 count_summary_tbl <- count_summary_tbl %>%
   unnest(c(cells, `#reads`, Feature_count, missing_mass))
 
+#my_cell_ordering <- my_cells
+my_cell_ordering <- count_summary_tbl %>% filter(Dataset == 'typical') %>% arrange(`#reads`) %>% pluck('cells')
+
 count_summary_tbl <- count_summary_tbl %>%
-  mutate(cells = factor(cells, levels = my_cells), Dataset = factor(Dataset, levels = c('ultra-deep', 'typical'))) %>%
+  mutate(cells = factor(cells, levels = my_cell_ordering), Dataset = factor(Dataset, levels = c('ultra-deep', 'typical'))) %>%
   mutate(cell_barcodes = cells, cells = factor(as.numeric(cells), levels = 1:18))
 
 count_summary_tbl %>% group_by(Dataset) %>% summarise(mean_umis = mean(`#reads`))
 
 count_plot <- ggplot(count_summary_tbl) +
-  geom_line(aes(x = cells, y = `#reads`, linetype = Dataset, group = Dataset)) +
-  geom_point(aes(x = cells, y = `#reads`), size = .7) +
+  geom_line(aes(x = cells, y = `#reads`, linetype = Dataset, group = Dataset, col = Dataset)) +
+  geom_point(aes(x = cells, y = `#reads`, col = Dataset), size = .7) +
   scale_linetype(breaks = c('typical', 'ultra-deep')) +
-  scale_x_discrete(labels = 1:18)
+  scale_x_discrete(labels = 1:18) +
+  scale_color_manual(values = c('gray50', 'black'), guide = 'none') +
+  guides(linetype = guide_legend(override.aes = list(color = c('black', 'gray50'))))
 ggsave(str_glue('{folder}summary/count_plot.pdf'), count_plot, width = 6.6, height = 4)
 saveRDS(file = str_glue('{folder}summary/count_plot.Rds'), count_plot)
 count_plot
 
 feature_plot <- ggplot(count_summary_tbl) +
-  geom_line(aes(x = cells, y = Feature_count, linetype = Dataset, group = Dataset)) +
-  geom_point(aes(x = cells, y = Feature_count), size = .7) +
+  geom_line(aes(x = cells, y = Feature_count, linetype = Dataset, group = Dataset, col = Dataset)) +
+  geom_point(aes(x = cells, y = Feature_count, col = Dataset), size = .7) +
   scale_linetype(breaks = c('typical', 'ultra-deep')) +
-  scale_x_discrete(labels = 1:18)
+  scale_x_discrete(labels = 1:18) +
+  scale_color_manual(values = c('gray50', 'black'), guide = 'none') +
+  guides(linetype = guide_legend(override.aes = list(color = c('black', 'gray50'))))
 ggsave(str_glue('{folder}summary/feature_plot.pdf'), feature_plot, width = 6.6, height = 4)
 saveRDS(file = str_glue('{folder}summary/feature_plot.Rds'), feature_plot)
 feature_plot
 
 mm_plot <- ggplot(count_summary_tbl) +
-  geom_line(aes(x = cells, y = missing_mass, linetype = Dataset, group = Dataset)) +
-  geom_point(aes(x = cells, y = missing_mass), size = .7) +
+  geom_line(aes(x = cells, y = missing_mass, linetype = Dataset, group = Dataset, col = Dataset)) +
+  geom_point(aes(x = cells, y = missing_mass, col = Dataset), size = .7) +
   scale_linetype(breaks = c('typical', 'ultra-deep')) +
-  scale_x_discrete(labels = 1:18)
+  scale_x_discrete(labels = 1:18) +
+  scale_color_manual(values = c('gray50', 'black'), guide = 'none') +
+  guides(linetype = guide_legend(override.aes = list(color = c('black', 'gray50'))))
 ggsave(str_glue('{folder}summary/mm_plot.pdf'), mm_plot, width = 6.6, height = 4)
 saveRDS(file = str_glue('{folder}summary/mm_plot.Rds'), mm_plot)
 mm_plot
@@ -142,10 +150,12 @@ read_summary_tbl <- read_summary_tbl %>%
   mutate(Dataset = fct_relevel(Dataset, c('ultra-deep', 'typical')))
 
 read_summary_plot <- ggplot(read_summary_tbl) + 
-  geom_line(aes(x = cells, y = `raw read count`, linetype = Dataset, group = Dataset)) +
-  geom_point(aes(x = cells, y = `raw read count`), size = .7) +
+  geom_line(aes(x = cells, y = `raw read count`, linetype = Dataset, group = Dataset, col = Dataset)) +
+  geom_point(aes(x = cells, y = `raw read count`, col = Dataset), size = .7) +
   scale_linetype(breaks = c('typical', 'ultra-deep')) +
-  scale_y_continuous(limits = c(1, 85000000), trans = 'log10')
+  scale_y_continuous(limits = c(1, 85000000), trans = 'log10') +
+  scale_color_manual(values = c('gray50', 'black'), guide = 'none') +
+  guides(linetype = guide_legend(override.aes = list(color = c('black', 'gray50'))))
 
 ggsave(str_glue('{folder}summary/read_summary_plot.pdf'), read_summary_plot, width = 6.6, height = 4)
 saveRDS(file = str_glue('{folder}summary/read_summary_plot.Rds'), read_summary_plot)
@@ -169,7 +179,7 @@ estimation_error_tbl <- bind_rows(map(my_cells, partial(calc_errors,
                                         metric = 'squared'))))
 
 estimation_error_tbl <- estimation_error_tbl %>%
-  mutate(cell = factor(cell, levels = my_cells))  %>%
+  mutate(cell = factor(cell, levels = my_cell_ordering))  %>%
   pivot_longer(!c(metric, cell), names_to = 'Method', values_to = 'Error') %>%
   mutate(Method = factor(Method, levels = c('ML', 'GT'))) %>%
   mutate(cell_barcodes = str_remove(cell, '-1'), cell = factor(as.numeric(cell), levels = 1:18))
