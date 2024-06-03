@@ -170,7 +170,7 @@ umi_tools_corrected <- umi_tools_corrected %>% collect()
 rm(cluster)
 toc()
 
-saveRDS(umi_tools_corrected, file = 'umi_tools_corrected.RDS')
+saveRDS(umi_tools_corrected, file = '../data/umi_tools_corrected.RDS')
 
 
 ```
@@ -211,5 +211,5 @@ ut_unequal_present/(ut_equal_present + ut_unequal_present)
 The changes are quite significant, so we will save this and use it for the rest of the analysis:
 
 ```{r save_counts}
-saveRDS(umi_tools_cm, file = 'umi_tools_corrected_deep_counts.RDS')
+saveRDS(umi_tools_cm, file = '../data/umi_tools_corrected_deep_counts.RDS')
 ```

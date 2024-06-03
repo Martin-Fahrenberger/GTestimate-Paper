@@ -26,7 +26,7 @@ In this Report we want to build a very simple simulation of the effect of the nu
 First we will use the cell with the highest number of UMIs from our cta-seq experiment as a ground-truth.
 
 ```{r load_data}
-deep_counts <- readRDS(file = 'umi_tools_corrected_deep_counts.RDS')
+deep_counts <- readRDS(file = '../data/umi_tools_corrected_deep_counts.RDS')
 
 deepest_cell <- deep_counts %>%
   select(gene, `TCTCTGGGTGTGCTTA-1`) %>%

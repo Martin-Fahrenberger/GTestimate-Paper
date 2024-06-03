@@ -364,7 +364,7 @@ effect of the number of UMIs/cell on the relative expression estimation
 and the distances between cells.</p>
 <p>First we will use the cell with the highest number of UMIs from our
 cta-seq experiment as a ground-truth.</p>
-<pre class="r"><code>deep_counts &lt;- readRDS(file = &#39;umi_tools_corrected_deep_counts.RDS&#39;)
+<pre class="r"><code>deep_counts &lt;- readRDS(file = &#39;../data/umi_tools_corrected_deep_counts.RDS&#39;)
 
 deepest_cell &lt;- deep_counts %&gt;%
   select(gene, `TCTCTGGGTGTGCTTA-1`) %&gt;%

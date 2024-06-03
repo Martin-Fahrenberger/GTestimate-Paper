@@ -29,7 +29,7 @@ In this script we will use the UMI-Tools corrected UMI counts of our cta-seq dat
 We load the typical data from cta-seq run 1 and the data after amplification from cta-seq run 2 and construct a large tibble containing all data for analysis.
 
 ```{r load_data}
-umi_tools_cm <- readRDS('umi_tools_corrected_deep_counts.RDS')
+umi_tools_cm <- readRDS('../data/umi_tools_corrected_deep_counts.RDS')
 
 umi_tools_dgC <- umi_tools_cm %>% select(-gene) %>% as.matrix() %>% as('dgCMatrix')
 rownames(umi_tools_dgC) <- umi_tools_cm$gene
@@ -52,7 +52,7 @@ for(i in rownames(umi_tools_dgC)){
 
 data_tbl$raw_counts[[2]] <- umi_tools_dgC_large
 
-write.csv2(umi_tools_dgC_large, file = '../data/cta_seq_ultra_deep.csv')
+write.csv2(umi_tools_dgC_large, file = '../data/cta-seq_ultra_deep.csv')
 ```
 
 Next we calculate the relative expression for both the typical and the ultra-deep data-set. Using both the GT and ML estimator.

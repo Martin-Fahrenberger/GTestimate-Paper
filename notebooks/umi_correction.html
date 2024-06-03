@@ -569,7 +569,7 @@ umi_tools_corrected &lt;- umi_tools_corrected %&gt;% collect()
 rm(cluster)
 toc()
 
-saveRDS(umi_tools_corrected, file = &#39;umi_tools_corrected.RDS&#39;)</code></pre>
+saveRDS(umi_tools_corrected, file = &#39;../data/umi_tools_corrected.RDS&#39;)</code></pre>
 <p>Let’s turn this into the count matrix and look what changed:</p>
 <pre class="r"><code>umi_tools_corrected &lt;- readRDS(&#39;../data/umi_tools_corrected.RDS&#39;)
 
@@ -596,7 +596,7 @@ ut_unequal_present/(ut_equal_present + ut_unequal_present)</code></pre>
 <pre><code>## [1] 0.2814486</code></pre>
 <p>The changes are quite significant, so we will save this and use it
 for the rest of the analysis:</p>
-<pre class="r"><code>saveRDS(umi_tools_cm, file = &#39;umi_tools_corrected_deep_counts.RDS&#39;)</code></pre>
+<pre class="r"><code>saveRDS(umi_tools_cm, file = &#39;../data/umi_tools_corrected_deep_counts.RDS&#39;)</code></pre>
 </div>
 
 

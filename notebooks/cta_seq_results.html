@@ -366,7 +366,7 @@ data.</p>
 <p>We load the typical data from cta-seq run 1 and the data after
 amplification from cta-seq run 2 and construct a large tibble containing
 all data for analysis.</p>
-<pre class="r"><code>umi_tools_cm &lt;- readRDS(&#39;umi_tools_corrected_deep_counts.RDS&#39;)
+<pre class="r"><code>umi_tools_cm &lt;- readRDS(&#39;../data/umi_tools_corrected_deep_counts.RDS&#39;)
 
 umi_tools_dgC &lt;- umi_tools_cm %&gt;% select(-gene) %&gt;% as.matrix() %&gt;% as(&#39;dgCMatrix&#39;)
 rownames(umi_tools_dgC) &lt;- umi_tools_cm$gene
@@ -389,7 +389,7 @@ for(i in rownames(umi_tools_dgC)){
 
 data_tbl$raw_counts[[2]] &lt;- umi_tools_dgC_large
 
-write.csv2(umi_tools_dgC_large, file = &#39;../data/cta_seq_ultra_deep.csv&#39;)</code></pre>
+write.csv2(umi_tools_dgC_large, file = &#39;../data/cta-seq_ultra_deep.csv&#39;)</code></pre>
 <p>Next we calculate the relative expression for both the typical and
 the ultra-deep data-set. Using both the GT and ML estimator.</p>
 <pre class="r"><code>data_tbl &lt;- data_tbl %&gt;%
