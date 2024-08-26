@@ -14,7 +14,7 @@ For processing of the raw reads you will need the CellRanger software (we used v
 
 ### Data Analysis
 The data analysis for this project was done in R and starts from intermediate results.
-These intermediate results can be accessed at: PLACEHOLDER and the paths need to be set manually in the various .Rmd scripts
+These intermediate results can be accessed at: https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE268930 and the paths need to be set manually in the various .Rmd scripts
 
 The analysis was mostly done using tidyverse, Seurat as well as a collection of other packages.
 
