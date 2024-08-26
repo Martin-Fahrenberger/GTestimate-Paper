@@ -166,6 +166,7 @@ nkg7_plot <- ggplot(marker_tbl_combined %>% filter(Gene == 'NKG7')) +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1), axis.title.x = element_blank())
 
 nkg7_plot
+
 ggsave(filename = str_glue('{folder}nkg7_plot.png'), nkg7_plot, width = 4, height = 2)
 saveRDS(file = str_glue('{folder}nkg7_plot.Rds'), nkg7_plot)
 ```

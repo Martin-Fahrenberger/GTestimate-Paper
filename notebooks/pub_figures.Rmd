@@ -37,6 +37,16 @@ read_count_hist <- read_count_hist +
 
 read_count_hist
 ggsave(str_glue('{folder}read_count_hist.pdf'), read_count_hist, width = 60, height = 40, units = 'mm')
+
+read_count_hist_thesis <- read_count_hist +
+  theme(axis.title = element_text(size = 11),
+        axis.text = element_text(size = 9),
+        title = element_blank()) + 
+  ylab('Cells') +
+  xlab('UMIs/cell') +
+  scale_x_continuous(labels=trans_format(trans = 'identity', math_format(phantom()^phantom(8)*.x^phantom(8))), limits = c(0, 25000))
+
+ggsave(str_glue('{folder}read_count_hist_thesis.pdf'), read_count_hist_thesis, width = 2.93, height = 1.84)
 ```
 
 
@@ -50,7 +60,7 @@ gene_count_hist <- gene_count_hist +
   xlab('Genes/cell')
 
 gene_count_hist
-ggsave(str_glue('{folder}gene_count_hist.pdf'), gene_count_hist, width = 3.24, height = 2)
+ggsave(str_glue('{folder}gene_count_hist.pdf'), gene_count_hist, width = 86, height = 60, units = 'mm', dpi = 400)
 ```
 
 
@@ -64,7 +74,7 @@ mm_hist <- mm_hist +
   xlab('Missing mass')
 
 mm_hist
-ggsave(str_glue('{folder}mm_hist.pdf'), mm_hist, width = 3.24, height = 2)
+ggsave(str_glue('{folder}mm_hist.pdf'), mm_hist, width = 86, height = 60, units = 'mm', dpi = 400)
 ```
 
 
@@ -85,7 +95,7 @@ toy_example_plot <- toy_example_plot +
   scale_x_discrete(labels = 1:30)
 
 toy_example_plot
-ggsave(str_glue('{folder}toy_example_plot.pdf'), toy_example_plot, width = 6.6, height = 2.6)
+ggsave(str_glue('{folder}toy_example_plot.pdf'), toy_example_plot, width = 86, height = 60, units = 'mm', dpi = 400)
 ```
 
 
@@ -107,7 +117,7 @@ read_summary <- read_summary +
 
 read_summary
 
-ggsave(str_glue('{folder}read_summary.pdf'), read_summary, width = 3.24, height = 2)
+ggsave(str_glue('{folder}read_summary.pdf'), read_summary, width = 86, height = 60, units = 'mm', dpi = 400)
 
 ```
 
@@ -154,7 +164,7 @@ mm_cta_seq <- mm_cta_seq +
         legend.box.spacing = unit(0,'mm'))
 
 mm_cta_seq
-ggsave(str_glue('{folder}mm_cta_seq.pdf'), mm_cta_seq, width = 3.24, height = 2)
+ggsave(str_glue('{folder}mm_cta_seq.pdf'), mm_cta_seq, width = 86, height = 60, units = 'mm', dpi = 400)
 ```
 
 ```{r cta-seq_feature}
@@ -173,7 +183,7 @@ feature_cta_seq <- feature_cta_seq +
         legend.box.spacing = unit(0,'mm'))
 
 feature_cta_seq
-ggsave(str_glue('{folder}feature_cta_seq.pdf'), feature_cta_seq, width = 3.24, height = 2)
+ggsave(str_glue('{folder}feature_cta_seq.pdf'), feature_cta_seq, width = 86, height = 60, units = 'mm', dpi = 400)
 ```
 
 ```{r downsampling_errors}
@@ -407,7 +417,7 @@ identity_umap <- identity_umap +
 combined_pbmc <- ggarrange(pbmc_umap + ggtitle('UMAPs, pbmc3k'), identity_umap + ggtitle(' '), widths = c(2,1)) 
 
 combined_pbmc
-ggsave(str_glue('{folder}pbmc_umap.png'), combined_pbmc, width = 100, height = 55, units = 'mm', dpi = 600)
+ggsave(str_glue('{folder}pbmc_umap.png'), combined_pbmc, width = 120, height = 60, units = 'mm', dpi = 600)
 ```
 
 ```{r pbmc_marker}
@@ -429,7 +439,7 @@ nkg7_plot <- nkg7_plot +
   ggtitle('Expression of NKG7, pbmc3k')
 
 nkg7_plot
-ggsave(str_glue('{folder}nkg7_plot.pdf'), nkg7_plot, width = 50, height = 55.8, units = 'mm')
+ggsave(str_glue('{folder}nkg7_plot.pdf'), nkg7_plot, width = 60, height = 55.8, units = 'mm')
 ```
 
 ```{r pbmc_more_markers}
@@ -452,7 +462,7 @@ more_markers_plot <- more_markers_plot +
   xlab(element_blank())
 
 more_markers_plot
-ggsave(str_glue('{folder}more_markers_plot.pdf'), more_markers_plot, width = 6.6, height = 6.6)
+ggsave(str_glue('{folder}more_markers_plot.pdf'), more_markers_plot, width = 178, height = 178, units = 'mm', dpi = 400)
 ```
 
 
@@ -461,7 +471,7 @@ ggsave(str_glue('{folder}more_markers_plot.pdf'), more_markers_plot, width = 6.6
 spatial_clustering <- readRDS(file = 'spatial_transcriptomics/st_clustering_plots.Rds')
 
 spatial_clustering
-ggsave(str_glue('{folder}spatial_clustering.png'), spatial_clustering, width = 6.6, height = 3.6, dpi = 600)
+ggsave(str_glue('{folder}spatial_clustering.png'), spatial_clustering, width = 178, height = 100, units = 'mm', dpi = 400)
 ```
 
 ```{r spatial_umap}
@@ -481,7 +491,7 @@ brain_umap <- brain_umap +
   ylab('UMAP_2')
 
 brain_umap
-ggsave(str_glue('{folder}brain_umap.png'), brain_umap, width = 4.4, height = 2.2, dpi = 600)
+ggsave(str_glue('{folder}brain_umap.png'), brain_umap, width = 86, height = 50, units = 'mm', dpi = 400)
 ```
 
 ```{r spatial_jaccard}
@@ -500,24 +510,29 @@ brain_jaccard <- brain_jaccard +
   scale_fill_viridis_c(breaks = c(0,0.3,0.6,0.9), labels = c(0,0.3,0.6,0.9))
 
 brain_jaccard
-ggsave(str_glue('{folder}brain_jaccard.pdf'), brain_jaccard,width = 2.5, height =2.9, dpi = 600)
+ggsave(str_glue('{folder}brain_jaccard.pdf'), brain_jaccard, width = 86, height = 100, units = 'mm', dpi = 400)
 ```
 
 
 ```{r spatial_marker}
 spatial_marker <- readRDS(file = 'spatial_transcriptomics/TTr_combined.Rds')
 
+spatial_marker <- spatial_marker +
+  theme(legend.margin = margin(0,0,0,0),
+        title = element_text(size = font_title),
+        legend.box.spacing = unit(0, 'cm'))
+
 spatial_marker
-ggsave(str_glue('{folder}spatial_marker.png'), spatial_marker, width = 6.6, height = 3.3, dpi = 600)
+ggsave(str_glue('{folder}spatial_marker.png'), spatial_marker, width = 76.12, height = 52, units = 'mm', dpi = 400)
 ```
 
 
 ```{r spatial_difference}
-spatial_diff <- readRDS(file = 'spatial_transcriptomics/TTr_ML_vs_GT.Rds') +
-  theme(legend.key.size = legend_key_size*0.75)
+spatial_diff <- readRDS(file = 'spatial_transcriptomics/TTr_ML_vs_GT.Rds')
 
 spatial_diff <- spatial_diff +
-  theme(legend.margin = margin(0,0,0,0),
+  theme(legend.key.size = legend_key_size*0.75,
+        legend.margin = margin(0,0,0,0),
         title = element_text(size = font_title),
         legend.box.spacing = unit(0, 'cm')) +
   ggtitle(expression('Relative Difference\nlog-norm. Expression Ttr'))
@@ -529,7 +544,7 @@ ggsave(str_glue('{folder}spatial_diff.png'), spatial_diff, width = 40, height = 
 
 ```{r spatial_counts}
 spatial_counts <- readRDS(file = 'spatial_transcriptomics/nReads_plot.Rds') +
-  theme(legend.key.size = legend_key_size*0.75)
+  theme(legend.key.size = legend_key_size)
 
 spatial_counts <- spatial_counts +
   theme(legend.margin = margin(0,0,0,0),
@@ -537,8 +552,33 @@ spatial_counts <- spatial_counts +
         legend.box.spacing = unit(0, 'cm')) +
   ggtitle('UMIs per Spot')
 spatial_counts
-ggsave(str_glue('{folder}spatial_counts.png'), spatial_counts, width = 40, height = 55, units = 'mm', dpi = 400)
+ggsave(str_glue('{folder}spatial_counts.png'), spatial_counts, width = 86, height = 100, units = 'mm', dpi = 400)
 ```
+
+```{r spatial_hists}
+spatial_hist_plot <- readRDS(file = 'spatial_transcriptomics/spatial_hist_plot.Rds') +
+  theme(legend.key.size = legend_key_size*0.75)
+
+spatial_hist_plot <- spatial_hist_plot +
+  theme_classic() +
+  theme(legend.margin = margin(0,0,0,0),
+        title = element_text(size = font_title),
+        axis.title = element_text(size = font_axis),
+        axis.text = element_text(size = font_axis),
+        legend.text = element_text(size = font_axis),
+        strip.text = element_text(size = font_title),
+        legend.key.size = unit(0.3, 'cm'),
+        legend.box.spacing = unit(0.1, 'cm'),
+        legend.position = 'bottom') +
+  ggtitle('Distribution of log-norm. Expression Ttr') + 
+  xlab('log norm. Expression') + 
+  ylab('Density')
+spatial_hist_plot
+ggsave(str_glue('{folder}spatial_hist_plot.pdf'), spatial_hist_plot, width = 60, height = 45, units = 'mm')
+ggsave(str_glue('{folder}spatial_hist_plot_no_legend.pdf'), spatial_hist_plot + theme(legend.position = 'none'), width = 61.55, height = 46.2, units = 'mm')
+```
+
+
 
 ```{r pancreas_umap}
 pancreas_umap <- readRDS(file = 'downstream_analysis_results/pancreas_umap_same_clusters.Rds')
@@ -587,7 +627,7 @@ pancreas_identity_umap <- pancreas_identity_umap +
 
 pancreas_combined <- ggarrange(pancreas_umap + ggtitle('UMAPs, Developing Pancreas'), pancreas_identity_umap  + ggtitle(' '), widths = c(2,1) )
 pancreas_combined
-ggsave(str_glue('{folder}pancreas_umap.png'), pancreas_combined, width = 100, height = 52, units = 'mm', dpi = 600)
+ggsave(str_glue('{folder}pancreas_umap.png'), pancreas_combined, width = 120, height = 57, units = 'mm', dpi = 400)
 ```
 
 ```{r pancreas_umaps_split}
@@ -623,5 +663,5 @@ pancreas_flow <- pancreas_flow +
   ggtitle(expression('Differences Clustering\nDeveloping Pancreas'))
 
 pancreas_flow
-ggsave(str_glue('{folder}pancreas_flow.pdf'), pancreas_flow, width = 30, height = 60, units = 'mm')
+ggsave(str_glue('{folder}pancreas_flow.pdf'), pancreas_flow, width = 30, height = 55, units = 'mm')
 ```

@@ -110,11 +110,11 @@ slide_image <- SpatialDimPlot(brain_GT, alpha = 0) +
   theme(legend.position = 'none',
         title = element_text(size = font_title)) +
   ggtitle('Slide')
-clustering_ML <- SpatialDimPlot(brain_ML, label = T, label.size = 3, label.color = 'black') +
+clustering_ML <- SpatialDimPlot(brain_ML, label = T, label.size = 3, label.color = 'black', stroke = 0, pt.size.factor = 1.7) +
   theme(legend.position = 'none',
         title = element_text(size = font_title)) +
   ggtitle('NormalizeData')
-clustering_GT <- SpatialDimPlot(brain_GT, label = T, label.size = 3, label.color = 'black') +
+clustering_GT <- SpatialDimPlot(brain_GT, label = T, label.size = 3, label.color = 'black', stroke = 0, pt.size.factor = 1.7) +
   theme(legend.position = 'none',
         title = element_text(size = font_title)) +
   ggtitle('GTestimate')
@@ -139,21 +139,24 @@ brain_ML_limited <- SetAssayData(brain_ML, layer = 'RNA', slot = 'data', new.dat
 brain_GT_limited <- SetAssayData(brain_GT, layer = 'RNA', slot = 'data', new.data = replace(GetAssayData(brain_GT, layer = 'RNA', slot = 'data'), list = GetAssayData(brain_GT) > 3, 3))
 color_range <- c(0, max(c(GetAssayData(brain_ML_limited, slot = 'data')[gene,], GetAssayData(brain_GT_limited, slot = 'data')[gene,])))
 
-TTr_spatial_plot_ML <- SpatialFeaturePlot(brain_ML_limited, features = gene, slot = 'data') +
+TTr_spatial_plot_ML <- SpatialFeaturePlot(brain_ML_limited, features = gene, slot = 'data', stroke = 0, pt.size.factor = 1.7) +
   ggtitle('NormalizeData') +
   scale_fill_gradientn(limits = color_range, colours=SpatialColors(n=100), breaks = c(0,1,2,3), labels = c(0,1,2,'\u2265 3')) +
-  theme(legend.position = 'bottom',
+  theme(legend.margin = margin(0,0,0,0),
+        legend.box.spacing = unit(0, 'cm'),
+        legend.position = 'bottom',
         legend.text = element_text(size = font_axis),
-        legend.key.size = legend_key_size,
+        legend.key.size = legend_key_size*0.75,
         title = element_text(size = font_title))
 
-TTr_spatial_plot_GT <- SpatialFeaturePlot(brain_GT_limited, features = gene, slot = 'data') +
+TTr_spatial_plot_GT <- SpatialFeaturePlot(brain_GT_limited, features = gene, slot = 'data', stroke = 0, pt.size.factor = 1.7) +
   ggtitle('GTestimate') +
   scale_fill_gradientn(limits = color_range, colours=SpatialColors(n=100), breaks = c(0,1,2,3), labels = c(0,1,2,'\u2265 3')) +
   theme(legend.position = 'none',
         title = element_text(size = font_title),
         legend.text = element_text(size = font_axis))
-TTr_combined <- slide_image + TTr_spatial_plot_ML + TTr_spatial_plot_GT
+#TTr_combined <- slide_image + TTr_spatial_plot_ML + TTr_spatial_plot_GT
+TTr_combined <- TTr_spatial_plot_ML + TTr_spatial_plot_GT
 
 TTr_combined
 ggsave(str_glue('{folder}TTr_combined.png'), TTr_combined, width = 6.6, height = 2.8)
@@ -170,13 +173,16 @@ brain_ML$ML_vs_GT <- replace(brain_ML$ML_vs_GT, is.na(brain_ML$ML_vs_GT), 0)
 
 relative_breaks <- c(0,20,40)
 
-TTr_ML_vs_GT <- SpatialFeaturePlot(brain_ML, features = "ML_vs_GT") +
+brain_ML_GT_lim <- brain_ML
+brain_ML_GT_lim$ML_vs_GT <- replace(brain_ML_GT_lim$ML_vs_GT, brain_ML_GT_lim$ML_vs_GT > 40 , 40)
+
+TTr_ML_vs_GT <- SpatialFeaturePlot(brain_ML_GT_lim, features = "ML_vs_GT", stroke = 0, pt.size.factor = 1.7) +
   theme(legend.position = 'bottom',
         title = element_text(size = font_title),
         legend.text = element_text(size = font_axis)) +
-  scale_fill_gradientn(name = expression(paste(Delta,phantom(x), Ttr, sep = '')),
-                       breaks = relative_breaks, labels = c('0','20','40%'),
-                       colours=SpatialColors(n=100))
+  scale_fill_viridis_c(name = expression(paste(Delta,phantom(x), Ttr, sep = '')),
+                       breaks = relative_breaks,
+                       labels = c('0','20','>40%'))
 
 TTr_ML_vs_GT
 ggsave(str_glue('{folder}TTr_ML_vs_GT.png'), TTr_ML_vs_GT, width = 2.2, height = 2.8)
@@ -184,7 +190,7 @@ saveRDS(file = str_glue('{folder}TTr_ML_vs_GT.Rds'), TTr_ML_vs_GT)
 
 brain_ML[['UMIs/spot']] <- brain_ML$nCount_Spatial %>% replace(brain_ML$nCount_Spatial > 40000, 40000)
 
-nReads_plot <- SpatialFeaturePlot(brain_ML, features = 'UMIs/spot') +
+nReads_plot <- SpatialFeaturePlot(brain_ML, features = 'UMIs/spot', stroke = 0, pt.size.factor = 1.7) +
   theme(legend.position = 'bottom',
         title = element_text(size = font_title),
         legend.text = element_text(size = font_axis),
@@ -231,3 +237,18 @@ ggsave(filename = str_glue('{folder}brain_umap.png'), brain_umap, width = 5, hei
 saveRDS(file = str_glue('{folder}brain_umap.Rds'), brain_umap)
 
 ```
+
+```{r spatial_hists}
+spatial_hist_data <- tibble(`NormalizeData` = GetAssayData(brain_ML, assay = 'Spatial', slot = 'data')['Ttr',],
+                           `GTestimate` = GetAssayData(brain_GT, assay = 'GTestimate', slot = 'data')['Ttr',]) %>%
+  pivot_longer(cols = c(NormalizeData, GTestimate),values_to = 'expression', names_to = 'Method') %>%
+  mutate(Method = fct_inorder(Method))
+
+spatial_hist_plot <- ggplot(spatial_hist_data) + geom_density(aes(x = expression, fill = Method, col = Method), position = 'identity', alpha = 0.4) + scale_x_continuous(trans = 'log2') + theme(legend.position = 'bottom')
+
+spatial_hist_plot
+
+ggsave(filename = str_glue('{folder}spatial_hist_plot.pdf'), spatial_hist_plot, width = 5, height = 2.5)
+saveRDS(file = str_glue('{folder}spatial_hist_plot.Rds'), spatial_hist_plot)
+```
+
