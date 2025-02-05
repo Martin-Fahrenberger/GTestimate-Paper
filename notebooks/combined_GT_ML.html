@@ -381,7 +381,10 @@ untar(str_glue(&#39;{folder}pbmc3k_data.tar.gz&#39;), exdir = str_glue(&#39;{fol
 pbmc_seurat &lt;- CreateSeuratObject(counts = Read10X(str_glue(&#39;{folder}data/filtered_gene_bc_matrices/hg19/&#39;)), min.cells = 3, min.features = 200)
 pbmc_seurat[[&quot;percent.mt&quot;]] &lt;- PercentageFeatureSet(pbmc_seurat, pattern = &quot;^MT-&quot;)
 
-pbmc_seurat &lt;- subset(pbmc_seurat, subset = nFeature_RNA &gt; 200 &amp; nFeature_RNA &lt; 2500 &amp; percent.mt &lt; 5)</code></pre>
+pbmc_seurat &lt;- subset(pbmc_seurat, subset = nFeature_RNA &gt; 200 &amp; nFeature_RNA &lt; 2500 &amp; percent.mt &lt; 5)
+
+fs::dir_delete(str_glue(&#39;{folder}data&#39;))
+fs::file_delete(str_glue(&#39;{folder}pbmc3k_data.tar.gz&#39;))</code></pre>
 <p>Now we can calculate the relative gene expression levels using ML and
 GT:</p>
 <pre class="r"><code>pbmc_seurat &lt;- pbmc_seurat %&gt;% NormalizeData(normalization.method = &#39;RC&#39;, scale.factor = 1) %&gt;% GTestimate(size.factor = 1, log1p.transform = FALSE)</code></pre>

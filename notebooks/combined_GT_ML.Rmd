@@ -44,6 +44,10 @@ pbmc_seurat <- CreateSeuratObject(counts = Read10X(str_glue('{folder}data/filter
 pbmc_seurat[["percent.mt"]] <- PercentageFeatureSet(pbmc_seurat, pattern = "^MT-")
 
 pbmc_seurat <- subset(pbmc_seurat, subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 5)
+
+fs::dir_delete(str_glue('{folder}data'))
+fs::file_delete(str_glue('{folder}pbmc3k_data.tar.gz'))
+
 ```
 
 Now we can calculate the relative gene expression levels using ML and GT:
