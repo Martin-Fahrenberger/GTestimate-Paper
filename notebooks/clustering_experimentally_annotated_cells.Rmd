@@ -1,0 +1,227 @@
+---
+title: "Clustering experimentally annotated cells"
+author: "Martin Fahrenberger"
+date: "2025-01-29"
+output: 
+  html_document:
+    css: style.css
+    code_folding: hide
+---
+
+```{r setup, include=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(GTestimate)
+library(Seurat)
+library(tidyverse)
+library(fs)
+library(mclust)
+
+folder <- 'clustering_experimentally_annotated_cells/'
+dir_create(folder)
+
+umap_dot_size <- 0.15
+
+```
+
+# Introduction
+
+We wanted to see if the switch from the ML to the GT estimator improves downstream clustering performance. To do so we needed some experimentally labeled scRNA-seq data to compare the performance.
+
+After looking for a scRNA-seq data-set with experimentally labeled ground-truth cell-types I found https://academic.oup.com/bib/article/25/5/bbae392/7730135 a 2024 study which does exactly this for a PBMC sample.
+
+Because of the "less-than-perfect" purity of magnetic bead purification, they roughly clustered their data and removed clusters with unclear cell-type markers.
+I used this "purified" version of the data-set
+
+They then used it to compare clustering and cell-annotation methods, but it should also work well for comparing different normalization methods.
+
+```{r load data, warning=F, message=F}
+liu_raw <- read.csv('../data/Datasets/Liu/Liu_purified.csv', row.names = 1)
+liu_type <- read_csv('../data/Datasets/Liu/Liu_purified_celltype.csv')
+
+liu_type_list <- liu_type$celltype
+names(liu_type_list) <- liu_type$barcodes
+
+liu_seurat <- CreateSeuratObject(liu_raw)
+liu_seurat <- AddMetaData(liu_seurat, metadata = liu_type_list, col.name = 'cell_type')
+
+rm(liu_raw)
+
+```
+# Initial clustering test
+
+I wanted to use the same Seurat parameters as in the original paper but I could not find them in the methods section, and the script they used is sadly not on the official github for the paper.
+
+I therefore tried a standard Seurat workflow using GTestimate, NormalizeData and also SCtransform, all at default settings and using the top 30 PCs (I chose 30 PCs because thats what was used for the initial "purification" clustering in the paper):
+
+```{r, warning=FALSE, message=FALSE}
+liu_ML <- liu_seurat %>% NormalizeData() %>% FindVariableFeatures(nfeatures = 2000) %>% ScaleData(features = rownames(liu_seurat)) %>% RunPCA(npcs = 30, verbose = F) %>% FindNeighbors(dims = 1:30) %>% RunUMAP(dims = 1:30)
+liu_ML <- liu_ML %>% FindClusters(resolution = 1, verbose = F)
+
+liu_GT <- liu_seurat %>% GTestimate() %>% FindVariableFeatures(nfeatures = 2000) %>% ScaleData(features = rownames(liu_seurat)) %>% RunPCA(npcs = 30, verbose = F) %>% FindNeighbors(dims = 1:30) %>% RunUMAP(dims = 1:30)
+liu_GT <- liu_GT %>% FindClusters(resolution = 1, verbose = F)
+
+liu_SC <- liu_seurat %>% SCTransform() %>% RunPCA(npcs = 30, verbose = F) %>% FindNeighbors(dims = 1:30) %>% RunUMAP(dims = 1:30)
+liu_SC <- liu_SC %>% FindClusters(resolution = 1, verbose = F)
+```
+## UMAPs {.tabset}
+Here is a quick UMAP of the true annotation (experimentally annotated cell-types overlayed on the NormalizeData based UMAP) and the three different UMAPs and clustering results for NormalizeData, GTestimate and SCTransform at a clustering resolution of 1:
+
+```{r, warning=FALSE, message=FALSE}
+liu_umap_data_ground_truth <- Embeddings(liu_ML, reduction = 'umap') %>%
+  as.data.frame %>%
+  rownames_to_column(var = 'Cell') %>%
+  as_tibble %>%
+  cbind(`Celltype` = liu_ML$cell_type) %>%
+  mutate(Method = 'Ground Truth')
+
+liu_umap_data_ML <- Embeddings(liu_ML, reduction = 'umap') %>%
+  as.data.frame %>%
+  rownames_to_column(var = 'Cell') %>%
+  as_tibble %>%
+  cbind(`Celltype` = liu_ML$seurat_clusters) %>%
+  mutate(Method = 'NormalizeData')
+
+liu_umap_data_GT <- Embeddings(liu_GT, reduction = 'umap') %>%
+  as.data.frame %>%
+  rownames_to_column(var = 'Cell') %>%
+  as_tibble %>%
+  cbind(`Celltype` = liu_GT$seurat_clusters) %>%
+  mutate(Method = 'GTestimate')
+
+liu_umap_data_SC <- Embeddings(liu_SC, reduction = 'umap') %>%
+  as.data.frame %>%
+  rownames_to_column(var = 'Cell') %>%
+  as_tibble %>%
+  cbind(`Celltype` = liu_SC$seurat_clusters) %>%
+  mutate(Method = 'SCTransform')
+
+liu_umap_ground_truth <- ggplot(liu_umap_data_ground_truth) + geom_point(aes(x = umap_1, y = umap_2, col = Celltype), size = umap_dot_size) + theme(legend.position = 'right')
+liu_umap_ML <- ggplot(liu_umap_data_ML) + geom_point(aes(x = umap_1, y = umap_2, col = Celltype), size = umap_dot_size) + theme(legend.position = 'right')
+liu_umap_GT <- ggplot(liu_umap_data_GT) + geom_point(aes(x = umap_1, y = umap_2, col = Celltype), size = umap_dot_size) + theme(legend.position = 'right')
+liu_umap_SC <- ggplot(liu_umap_data_SC) + geom_point(aes(x = umap_1, y = umap_2, col = Celltype), size = umap_dot_size) + theme(legend.position = 'right')
+
+```
+### Ground Truth
+```{r}
+liu_umap_ground_truth
+```
+
+### NormalizeData
+```{r}
+liu_umap_ML
+```
+
+### GTestimate
+```{r}
+liu_umap_GT
+```
+
+### SCTransform
+```{r}
+liu_umap_SC
+```
+
+# Comparing clustering results {.tabset}
+
+To compare the clustering results I used the Adjusted Rand Index (ARI), the same as in the Fu et al. paper.
+
+```{r}
+
+tibble(`ARI NormalizeData` = adjustedRandIndex(liu_ML$cell_type, liu_ML$seurat_clusters), 
+       `ARI GTestimate` = adjustedRandIndex(liu_ML$cell_type, liu_GT$seurat_clusters), 
+       `ARI SCtransform` = adjustedRandIndex(liu_ML$cell_type, liu_SC$seurat_clusters))
+```
+
+
+We can see that, at the default clustering resolution of 1, the SCTransform based clustering is the closest to the experimental ground-truth.
+However these results are highly dependent on the chosen parameters, most obviously the clustering resolution. This resolution is routinely adjusted in scRNA-seq experiments to optimize the clustering.
+
+I therefore calculated the ARI scores for 15 different resolutions from 0.1 to 1.5 for each Normalization method. The results are show in the tables below.
+
+## NormalizeData
+
+
+```{r, warning=F, message=F}
+optimize_ML <- tibble()
+for (i in seq(0.1,1.5,0.1)){
+  liu_ML <- liu_ML %>% FindClusters(resolution = i, verbose = F)
+  
+  optimize_ML <- rbind(optimize_ML, list(resolution = i, cluster = length(levels(liu_ML$seurat_clusters)), ARI = adjustedRandIndex(liu_ML$cell_type, liu_ML$seurat_clusters)))
+}
+optimize_ML
+
+```
+## GTestimate
+
+```{r, warning=F, message=F}
+optimize_GT <- tibble()
+for (i in seq(0.1,1.5,0.1)){
+  liu_GT <- liu_GT %>% FindClusters(resolution = i, verbose = F)
+  
+  optimize_GT <- rbind(optimize_GT, list(resolution = i, cluster = length(levels(liu_GT$seurat_clusters)), ARI = adjustedRandIndex(liu_ML$cell_type, liu_GT$seurat_clusters)))
+}
+optimize_GT
+
+```
+
+## SCTransform
+
+```{r, warning=F, message=F}
+optimize_SC <- tibble()
+for (i in seq(0.1,1.5,0.1)){
+  liu_SC <- liu_SC %>% FindClusters(resolution = i, verbose = F)
+  
+  optimize_SC <- rbind(optimize_SC, list(resolution = i, cluster = length(levels(liu_SC$seurat_clusters)), ARI = adjustedRandIndex(liu_ML$cell_type, liu_SC$seurat_clusters)))
+}
+optimize_SC
+
+```
+# Results
+
+We can see that GTestimate outperforms NormalizeData for all 15 resolutions except 1 , by subtracting the GTestimate scores from the NormalizeData scores (see negative numbers):
+
+```{r}
+(optimize_ML - optimize_GT) %>% select(cluster, ARI)
+```
+
+And for most resolutions it also outperforms SCTransform:
+
+```{r}
+(optimize_SC - optimize_GT) %>% select(cluster, ARI)
+```
+
+Especially important is that the highest ARI out of all resolutions is achieved by using GTestimate:
+
+Normalizedata:
+```{r}
+optimize_ML %>% filter(ARI == max(ARI))
+```
+GTestimate:
+```{r}
+optimize_GT %>% filter(ARI == max(ARI))
+```
+SCTransform:
+```{r}
+optimize_SC %>% filter(ARI == max(ARI))
+```
+I have also visualized these results here:
+
+```{r}
+all_optimized <- tibble(optimize_ML, method = 'NormalizeData')
+all_optimized <- all_optimized %>% rbind(tibble(optimize_GT, method = 'GTestimate'))
+all_optimized <- all_optimized %>% rbind(tibble(optimize_SC, method = 'SCTransform'))
+  
+ARI_plot <- ggplot() + 
+  geom_col(data = all_optimized, aes(x = resolution, y = ARI, fill = method), col = 'white', position = 'dodge', width = 0.08) +
+  geom_hline(data = all_optimized %>% group_by(method) %>% summarize(max_ARI = max(ARI)), aes(yintercept=max_ARI, col = method)) + 
+  geom_label(data = all_optimized %>% group_by(method) %>% summarize(max_ARI = max(ARI)), aes(y = max_ARI, col = method, label = paste(method, '=',  round(max_ARI, 3))), x = 1.15, hjust = 0) +
+  theme(legend.position = 'none') +
+  scale_x_continuous(breaks = seq(0.1,1.5,0.1))
+
+
+ARI_plot
+ggsave(filename = str_glue('{folder}ARI_plot.pdf'), ARI_plot, width = 7, height = 5)
+saveRDS(file = str_glue('{folder}ARI_plot.Rds'), ARI_plot)
+
+```
+
