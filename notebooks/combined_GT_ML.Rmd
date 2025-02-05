@@ -1,0 +1,97 @@
+---
+title: "Impact of a combined GT-ML estimator"
+output: 
+  html_document:
+    css: style.css
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width=10, fig.height=6)
+library(Seurat)
+library(tidyverse)
+library(GTestimate)
+library(anndata)
+library(ggpubr)
+library(fs)
+library(ggalluvial)
+source('functions/gg_color_hue.R')
+
+folder <- 'combined_ML_GT/'
+dir_create(folder)
+
+```
+
+# Introduction
+
+In our implementation of the Good-Turing estimator in GTestimate we us the Simple Good-Turing estimator, as introduced by Gale and Sampson 1995:
+https://www.tandfonline.com/doi/abs/10.1080/09296179508590051
+
+However, many of the Good-Turing based estimators have been proposed. 
+Notably  Drukh et al. 2005 and A. Painsky 2022 introduce combined ML and GT estimators, which use a switching rule to change between the ML and GT estimator depending on the counts.
+
+Here we will test this switching behavior as introduced by Drukh et al.
+
+# pbmc3k
+
+First lets analyse the popular pbmc3k dataset following Seurat guided clustering tutorial.
+We ll first download the data and create the Seurat object.
+```{r}
+#https://support.10xgenomics.com/single-cell-gene-expression/datasets/1.1.0/pbmc3k
+download.file('https://cf.10xgenomics.com/samples/cell/pbmc3k/pbmc3k_filtered_gene_bc_matrices.tar.gz', str_glue('{folder}pbmc3k_data.tar.gz'))
+untar(str_glue('{folder}pbmc3k_data.tar.gz'), exdir = str_glue('{folder}data'))
+
+pbmc_seurat <- CreateSeuratObject(counts = Read10X(str_glue('{folder}data/filtered_gene_bc_matrices/hg19/')), min.cells = 3, min.features = 200)
+pbmc_seurat[["percent.mt"]] <- PercentageFeatureSet(pbmc_seurat, pattern = "^MT-")
+
+pbmc_seurat <- subset(pbmc_seurat, subset = nFeature_RNA > 200 & nFeature_RNA < 2500 & percent.mt < 5)
+```
+
+Now we can calculate the relative gene expression levels using ML and GT:
+
+```{r normalize}
+pbmc_seurat <- pbmc_seurat %>% NormalizeData(normalization.method = 'RC', scale.factor = 1) %>% GTestimate(size.factor = 1, log1p.transform = FALSE)
+
+```
+# The switching rule
+The switching rule uses the GT estimates for all "low" expression genes and proposes to switch to the ML estimator when the count of a gene is higher than the sum of all counts in the cell to the power of 2/5.
+
+For any example cell in our data-set, we can now check for which genes this rule would propose the ML estimator:
+
+```{r drukh_switching}
+example_cell <- 1
+
+where_switch <- GetAssayData(pbmc_seurat, slot = 'counts') %>% apply(2,function(x) x > sum(x)^(2/5))
+
+GetAssayData(pbmc_seurat, slot = 'counts')[which(where_switch[,1]), example_cell]
+
+re_ML_cell_switched <- GetAssayData(pbmc_seurat, slot = 'data', assay = 'RNA')[which(where_switch[,1]), example_cell]
+re_GT_cell_switched <- GetAssayData(pbmc_seurat, slot = 'data', assay = 'GTestimate')[which(where_switch[,1]), example_cell]
+```
+We can see that the rule only activated for 17 out of 779 expressed genes
+
+We can also apply this to all cells and check the average number of genes affected per cell:
+
+```{r drukh_switching_all}
+where_switch <- GetAssayData(pbmc_seurat, slot = 'counts') %>% apply(2,function(x) x > sum(x)^(2/5))
+
+mean(colSums(where_switch))
+
+```
+On average 13.34 genes would be affected by the switching rule
+
+# Results
+
+To asses the impact of this combined ML and GT estimator we can calculate the Fold Change between the ML estimate and the GT estimates for the genes for which the switching rule activated:
+
+```{r fc_results}
+
+re_ML_switched <- GetAssayData(pbmc_seurat, slot = 'data', assay = 'RNA')[where_switch]
+re_GT_switched <- GetAssayData(pbmc_seurat, slot = 'data', assay = 'GTestimate')[where_switch]
+
+mean(abs((re_ML_switched - re_GT_switched)/re_ML_switched))
+
+```
+
+We can see that for the, on average, 13.34 affected genes the expression estimate changes by a FC of, on average, 0.024.
+
+We therefore concluded that these combined estimators are not worth the additional effort and complexity.
