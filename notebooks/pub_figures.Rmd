@@ -688,6 +688,7 @@ pancreas_flow
 ggsave(str_glue('{folder}pancreas_flow.pdf'), pancreas_flow, width = 30, height = 55, units = 'mm')
 ```
 
+<<<<<<< HEAD
 ```{r ARI_plot}
 
 ari_plot <- readRDS(file = 'clustering_experimentally_annotated_cells/ARI_plot.Rds')
@@ -698,6 +699,17 @@ ari_plot <- ari_plot +
         legend.position = 'none') + 
   ylab('ARI') + 
   xlab('Clustering Resolution')
+=======
+```{r ari_plot}
+ari_plot <- readRDS(file = 'clustering_experimentally_annotated_cells/ARI_plot.Rds')
+ari_plot <- ari_plot +
+   theme_classic() +
+   theme(axis.title = element_text(size = font_axis),
+         axis.text = element_text(size = font_tick),
+         legend.position = 'none') + 
+   ylab('ARI') + 
+   xlab('Clustering Resolution')
+>>>>>>> refs/remotes/origin/main
 
 ari_plot
 ggsave(str_glue('{folder}ari_plot.pdf'), ari_plot, width = 178, height = 120, units = 'mm', dpi = 400)

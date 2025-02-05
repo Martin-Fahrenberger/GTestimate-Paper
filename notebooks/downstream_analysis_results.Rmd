@@ -50,7 +50,7 @@ pbmc_seurat_ML <- pbmc_seurat %>%
   FindVariableFeatures %>%
   ScaleData %>%
   RunPCA(ndim = 10) %>%
-  FindNeighbors(dims= 1:10) %>%
+  FindNeighbors(dims = 1:10) %>%
   FindClusters(resolution = 0.5) %>%
   RunUMAP(dims = 1:10)
 
@@ -59,7 +59,7 @@ pbmc_seurat_GT <- pbmc_seurat %>%
   FindVariableFeatures %>%
   ScaleData %>%
   RunPCA(ndim = 10) %>%
-  FindNeighbors(dims= 1:10) %>%
+  FindNeighbors(dims = 1:10) %>%
   FindClusters(resolution = 0.5) %>%
   RunUMAP(dims = 1:10)
 
