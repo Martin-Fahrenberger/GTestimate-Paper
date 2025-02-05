@@ -90,12 +90,34 @@ toy_example_plot <- toy_example_plot +
         legend.key.size = legend_key_size,
         title = element_text(size = font_title)) +
   xlab('Genes ranked by expression') + 
-  ylab('Relative expession') +
+  ylab('Relative expression') +
   scale_fill_manual(values = c('black',gg_color_hue(2))) +
   scale_x_discrete(labels = 1:30)
 
 toy_example_plot
-ggsave(str_glue('{folder}toy_example_plot.pdf'), toy_example_plot, width = 86, height = 60, units = 'mm', dpi = 400)
+ggsave(str_glue('{folder}toy_example_plot.pdf'), toy_example_plot, width = 120, height = 60, units = 'mm', dpi = 400)
+
+toy_example_plot_no_legend <- toy_example_plot + theme(legend.position = 'none')
+ggsave(str_glue('{folder}toy_example_plot_no_legend.pdf'), toy_example_plot_no_legend, width = 120, height = 60, units = 'mm', dpi = 400)
+
+toy_example_plot_ML <- toy_example_plot + 
+  theme_classic() +
+  theme(axis.title = element_text(size = font_axis),
+        axis.text = element_text(size = font_tick),
+        legend.position = 'bottom',
+        legend.text = element_text(size = font_axis),
+        legend.key.size = legend_key_size,
+        title = element_text(size = font_title)) +
+  xlab('Genes ranked by expression') + 
+  ylab('Relative expression') +
+  scale_fill_manual(values = c('black',gg_color_hue(1), 'white')) +
+  scale_x_discrete(labels = 1:30)
+
+toy_example_plot_ML
+ggsave(str_glue('{folder}toy_example_plot_ML.pdf'), toy_example_plot_ML, width = 120, height = 60, units = 'mm', dpi = 400)
+
+toy_example_plot_ML_no_legend <- toy_example_plot_ML + theme(legend.position = 'none')
+ggsave(str_glue('{folder}toy_example_plot_ML_no_legend.pdf'), toy_example_plot_ML_no_legend, width = 120, height = 60, units = 'mm', dpi = 400)
 ```
 
 
@@ -270,7 +292,7 @@ same_dist_legend <- same_dist +
   scale_x_log10(labels=trans_format('log10',math_format(10^.x))) +
   xlab('UMIs/cell') + 
   ylab('Euclidean distance') +
-  ggtitle('Distances, equal Cells') +
+  ggtitle('Distances, same Cells') +
   guides(linetype = guide_legend(override.aes = list(linetype = "33"))) +
   scale_y_continuous(labels = function(x) formatC(x, width = 5, format = "f", digits = 2), limits = c(0, 0.155))
 
@@ -293,7 +315,7 @@ different_dist_legend <- different_dist +
   guides(linetype = guide_legend(override.aes = list(linetype = "33"))) +
   scale_y_continuous(labels = function(x) formatC(x, width = 5, format = "f", digits = 2), limits = c(0, 0.155))
 
-combined_dists_legend <- ggarrange(same_dist_legend, different_dist_legend, common.legend = T)
+combined_dists_legend <- ggarrange(same_dist_legend, different_dist_legend, common.legend = T, legend = 'bottom')
 
 combined_dists_legend
 ggsave(str_glue('{folder}combined_dists_legend.pdf'), combined_dists_legend, width = 120, height = 40, units = 'mm')
@@ -665,3 +687,19 @@ pancreas_flow <- pancreas_flow +
 pancreas_flow
 ggsave(str_glue('{folder}pancreas_flow.pdf'), pancreas_flow, width = 30, height = 55, units = 'mm')
 ```
+
+```{r ARI_plot}
+
+ari_plot <- readRDS(file = 'clustering_experimentally_annotated_cells/ARI_plot.Rds')
+ari_plot <- ari_plot +
+  theme_classic() +
+  theme(axis.title = element_text(size = font_axis),
+        axis.text = element_text(size = font_tick),
+        legend.position = 'none') + 
+  ylab('ARI') + 
+  xlab('Clustering Resolution')
+
+ari_plot
+ggsave(str_glue('{folder}ari_plot.pdf'), ari_plot, width = 178, height = 120, units = 'mm', dpi = 400)
+```
+
