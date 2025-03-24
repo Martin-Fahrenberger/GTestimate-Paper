@@ -33,7 +33,7 @@ Here we will test this switching behavior as introduced by Drukh et al.
 
 # pbmc3k
 
-First lets analyse the popular pbmc3k dataset following Seurat guided clustering tutorial.
+Lets analyse the popular pbmc3k dataset following Seurat guided clustering tutorial.
 We ll first download the data and create the Seurat object.
 ```{r}
 #https://support.10xgenomics.com/single-cell-gene-expression/datasets/1.1.0/pbmc3k
@@ -85,7 +85,7 @@ On average 13.34 genes would be affected by the switching rule
 
 # Results
 
-To asses the impact of this combined ML and GT estimator we can calculate the Fold Change between the ML estimate and the GT estimates for the genes for which the switching rule activated:
+To asses the impact of this combined ML and GT estimator we can calculate the relative difference between the ML estimate and the GT estimates for the genes for which the switching rule activated:
 
 ```{r fc_results}
 
@@ -96,6 +96,6 @@ mean(abs((re_ML_switched - re_GT_switched)/re_ML_switched))
 
 ```
 
-We can see that for the, on average, 13.34 affected genes the expression estimate changes by a FC of, on average, 0.024.
+We can see that for the, on average, 13.34 affected genes the mean absolute relative difference between the expression estimates of ML and GT was 0.024.
 
 We therefore concluded that these combined estimators are not worth the additional effort and complexity.

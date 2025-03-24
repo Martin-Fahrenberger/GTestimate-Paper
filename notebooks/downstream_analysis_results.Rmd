@@ -70,9 +70,9 @@ pbmc_seurat_SC <- pbmc_seurat %>%
   FindClusters(resolution = 0.5) %>%
   RunUMAP(dims = 1:10)
 
-NKG7_expression_tbl <- tibble(genes = rownames(pbmc_seurat_ML), log_expression = GetAssayData(pbmc_seurat_ML, assay = 'RNA', layer = 'data')['NKG7',], method = 'NormalizeData')
-NKG7_expression_tbl <- NKG7_expression_tbl %>% rbind(tibble(genes = rownames(pbmc_seurat_GT), log_expression = GetAssayData(pbmc_seurat_GT, assay = 'GTestimate', layer = 'data')['NKG7',], method = 'GTestimate'))
-NKG7_expression_tbl <- NKG7_expression_tbl %>% rbind(tibble(genes = rownames(pbmc_seurat_SC), log_expression = GetAssayData(pbmc_seurat_SC, assay = 'SCT', layer = 'data')['NKG7',], method = 'SCTransform'))
+NKG7_expression_tbl <- tibble(log_expression = GetAssayData(pbmc_seurat_ML, assay = 'RNA', layer = 'data')['NKG7',], method = 'NormalizeData')
+NKG7_expression_tbl <- NKG7_expression_tbl %>% rbind(tibble(log_expression = GetAssayData(pbmc_seurat_GT, assay = 'GTestimate', layer = 'data')['NKG7',], method = 'GTestimate'))
+NKG7_expression_tbl <- NKG7_expression_tbl %>% rbind(tibble(log_expression = GetAssayData(pbmc_seurat_SC, assay = 'SCT', layer = 'data')['NKG7',], method = 'SCTransform'))
 ```
 
 SCTransform completely changes the scale of the log-expression values and is therefore not comparable:

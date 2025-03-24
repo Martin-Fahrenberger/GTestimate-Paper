@@ -696,7 +696,8 @@ ari_plot <- ari_plot +
          axis.text = element_text(size = font_tick),
          legend.position = 'none') + 
    ylab('ARI') + 
-   xlab('Clustering Resolution')
+   xlab('Clustering Resolution') +
+  scale_y_continuous(limits=c(0,1))
 ari_plot
 ggsave(str_glue('{folder}ari_plot.pdf'), ari_plot, width = 178, height = 120, units = 'mm', dpi = 400)
 ```
