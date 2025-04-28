@@ -225,3 +225,33 @@ saveRDS(file = str_glue('{folder}ARI_plot.Rds'), ARI_plot)
 
 ```
 
+```{r, max_mean}
+summary_tibble <- tibble(resolution = optimize_ML$resolution,
+                         ARI_ML = optimize_ML$ARI,
+                         ARI_GT = optimize_GT$ARI,
+                         ARI_SC = optimize_SC$ARI)
+summary_tibble <- summary_tibble %>%
+  pivot_longer(contains('ARI'), names_to = 'Method', values_to = 'ARI') %>%
+  mutate(Method = str_remove( Method, pattern = 'ARI_'))
+```
+
+Evaluating these we can see that GTestimate achieves both the highest max_ARI and mean_ARI:
+
+```{r, most_max}
+summary_tibble %>%
+  group_by(Method) %>%
+  summarise(max_ARI = max(ARI), mean_ARI = mean(ARI))
+```
+
+And that GT achieves the best ARI at 10/15 resolutions:
+
+```{r, additional_summary}
+summary_tibble %>%
+  group_by(resolution) %>%
+  summarize(which_max_ARI = unique(summary_tibble$Method)[which.max(ARI)]) %>%
+  pluck('which_max_ARI') %>%
+  table
+
+
+```
+
