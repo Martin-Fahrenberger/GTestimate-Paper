@@ -1,6 +1,6 @@
 # GTestimate
 
-This Repository contains all Code necessary to reproduce the findings of our paper "GTestimate: Improving relative gene expression estimation in scRNA-seq using the Good-Turing estimator" now published in GigaScience https://doi.org/10.1093/gigascience/giaf084.
+This Repository contains all Code necessary to reproduce the findings of our paper "GTestimate: improving relative gene expression estimation in scRNA-seq using the Good–Turing estimator" now published in GigaScience https://doi.org/10.1093/gigascience/giaf084.
 
 ## Overview
 
